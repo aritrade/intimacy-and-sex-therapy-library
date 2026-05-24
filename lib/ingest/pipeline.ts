@@ -91,8 +91,11 @@ async function ingestOne(r: IngestRecord) {
     .onConflictDoUpdate({
       target: resources.slug,
       set: {
+        sourceId: src.id,
         title: r.title,
         authors: r.authors,
+        authorCredentials: r.authorCredentials ?? [],
+        publishedAt: r.publishedAt ?? null,
         license: r.license,
         externalUrl: r.externalUrl,
         summary: r.abstract ?? null,

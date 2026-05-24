@@ -161,6 +161,7 @@ export const ALLOWLIST: AllowlistSource[] = [
   { slug: "johns-hopkins", name: "Johns Hopkins Medicine", kind: "university", url: "https://www.hopkinsmedicine.org/", trustTier: "tier_2" },
   { slug: "ucsf", name: "UCSF Health", kind: "university", url: "https://www.ucsfhealth.org/", trustTier: "tier_2" },
   { slug: "umich-shc", name: "University of Michigan Sexual Health Certificate", kind: "university", url: "https://sexualhealth.med.umich.edu/", trustTier: "tier_2" },
+  { slug: "cornell-health", name: "Cornell Health (Cornell University)", kind: "university", url: "https://health.cornell.edu/", trustTier: "tier_2" },
 
   // ---------------------------------------------------------------------
   // Tier 2: publishers — METADATA + DEEP LINKS ONLY (no full-text host).
@@ -171,6 +172,10 @@ export const ALLOWLIST: AllowlistSource[] = [
   { slug: "norton", name: "W. W. Norton (publisher)", kind: "publisher", url: "https://wwnorton.com/", trustTier: "tier_2", notes: "Metadata + links only." },
   { slug: "guilford", name: "Guilford Press", kind: "publisher", url: "https://www.guilford.com/", trustTier: "tier_2", notes: "Metadata + links only." },
   { slug: "routledge", name: "Routledge / Taylor & Francis", kind: "publisher", url: "https://www.routledge.com/", trustTier: "tier_2", notes: "Metadata + links only." },
+  { slug: "harpercollins", name: "HarperCollins (publisher)", kind: "publisher", url: "https://www.harpercollins.com/", trustTier: "tier_2", notes: "Metadata + links only." },
+  { slug: "simon-schuster", name: "Simon & Schuster (publisher)", kind: "publisher", url: "https://www.simonandschuster.com/", trustTier: "tier_2", notes: "Metadata + links only." },
+  { slug: "rowman-littlefield", name: "Rowman & Littlefield (publisher)", kind: "publisher", url: "https://rowman.com/", trustTier: "tier_2", notes: "Metadata + links only." },
+  { slug: "crucible4points", name: "Crucible 4 Points — Dr. David Schnarch (author site)", kind: "publisher", url: "https://www.crucible4points.com/", trustTier: "tier_2", notes: "Author's official site for the Crucible Approach books." },
 
   // ---------------------------------------------------------------------
   // Tier 1: video channels — we ingest transcripts via the official
