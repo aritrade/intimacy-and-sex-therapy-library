@@ -45,26 +45,27 @@ export function NavBar({ authSlot }: { authSlot?: React.ReactNode }) {
       >
         <Link
           href="/"
-          className="flex items-center gap-2 font-serif text-base font-semibold tracking-tight text-ink-900 hover:text-accent-ink whitespace-nowrap"
+          className="flex shrink-0 items-center gap-2 font-serif text-base font-semibold tracking-tight text-ink-900 hover:text-accent-ink whitespace-nowrap"
         >
           <Logo />
-          <span className="hidden xl:inline">Intimacy &amp; Sex Therapy Library</span>
-          <span className="hidden md:inline xl:hidden">Intimacy &amp; Sex Library</span>
+          <span className="hidden 2xl:inline">Intimacy &amp; Sex Therapy Library</span>
+          <span className="hidden lg:inline 2xl:hidden">Intimacy &amp; Sex Library</span>
+          <span className="hidden md:inline lg:hidden">ISTL</span>
           <span className="md:hidden">ISTL</span>
         </Link>
 
-        <span aria-hidden className="hidden md:block h-5 w-px bg-border ml-1" />
+        <span aria-hidden className="hidden md:block h-5 w-px bg-border ml-1 shrink-0" />
 
-        <ul className="hidden md:flex items-center gap-x-0.5 text-sm">
+        <ul className="hidden md:flex min-w-0 flex-1 items-center gap-x-0 text-sm overflow-x-auto scrollbar-none">
           {NAV.map((item) => {
             const active =
               pathname === item.href ||
               (item.href !== "/" && pathname?.startsWith(item.href));
             return (
-              <li key={item.href}>
+              <li key={item.href} className="shrink-0">
                 <Link
                   href={item.href}
-                  className={`relative rounded-lg px-2.5 py-2 whitespace-nowrap text-ink-600 hover:text-ink-900 hover:bg-elevated transition-colors ${
+                  className={`relative inline-block rounded-lg px-2 py-2 whitespace-nowrap text-ink-600 hover:text-ink-900 hover:bg-elevated transition-colors ${
                     active ? "text-ink-900 bg-elevated" : ""
                   }`}
                 >
@@ -72,7 +73,7 @@ export function NavBar({ authSlot }: { authSlot?: React.ReactNode }) {
                   {active && (
                     <span
                       aria-hidden
-                      className="absolute inset-x-2.5 -bottom-px h-0.5 rounded-full bg-gradient-text"
+                      className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-gradient-text"
                     />
                   )}
                 </Link>
@@ -81,7 +82,7 @@ export function NavBar({ authSlot }: { authSlot?: React.ReactNode }) {
           })}
         </ul>
 
-        <div className="ml-auto flex items-center gap-1.5">
+        <div className="ml-auto flex shrink-0 items-center gap-1.5 pl-2">
           <LanguageToggle />
           <ThemeToggle />
           {authSlot}

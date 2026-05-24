@@ -126,6 +126,12 @@ body {
   .container-page {
     @apply mx-auto w-full max-w-6xl px-4 sm:px-6;
   }
+  .scrollbar-none {
+    scrollbar-width: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
   .card {
     @apply rounded-2xl border border-border bg-surface shadow-card;
   }
