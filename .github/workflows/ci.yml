@@ -117,6 +117,8 @@ jobs:
           name: next-build
           path: .next
           retention-days: 1
+          # .next/ starts with a dot; v4 filters hidden paths unless told.
+          include-hidden-files: true
 
   # -------------------------------------------------------------------------
   # End-to-end with Playwright against the production build.

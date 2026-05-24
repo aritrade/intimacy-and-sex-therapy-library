@@ -67,6 +67,12 @@ export async function getTestDb(): Promise<TestDb> {
   cached = { client, db, schema };
 
   if (!migrated) {
+    // Enable extensions BEFORE migrate runs — the schema references the
+    // `vector` type and pg_trgm operators, which require the extension on
+    // each fresh database (the pgvector/pgvector image bundles the binary
+    // but does NOT auto-enable the extension per DB).
+    await client`CREATE EXTENSION IF NOT EXISTS vector`;
+    await client`CREATE EXTENSION IF NOT EXISTS pg_trgm`;
     // Pretend we live in the project root so paths to drizzle/ resolve.
     await migrate(db, { migrationsFolder: "./drizzle" });
     for (const sqlFile of ["0001_indexes.sql", "0002_reviewer_notes.sql"]) {
