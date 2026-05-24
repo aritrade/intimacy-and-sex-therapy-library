@@ -30,16 +30,13 @@ jobs:
     name: adversarial eval
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    defaults:
-      run:
-        working-directory: sex-therapy-repo
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
           cache: npm
-          cache-dependency-path: sex-therapy-repo/package-lock.json
+          cache-dependency-path: package-lock.json
       - run: npm ci
       - name: Run eval
         env:
@@ -56,5 +53,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: eval-report
-          path: sex-therapy-repo/eval-reports
+          path: eval-reports
           retention-days: 30
