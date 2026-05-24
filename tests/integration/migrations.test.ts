@@ -77,8 +77,9 @@ describeIntegration("migrations + extensions", () => {
       select tsv::text as tsv from chunks where id = ${chunk.id}
     `) as Array<{ tsv: string | null }>;
     expect(rows[0].tsv).toBeTruthy();
-    expect(rows[0].tsv).toContain("couples");
-    expect(rows[0].tsv).toContain("intimaci"); // english stemmer collapses 'intimacy'
+    // The english stemmer collapses 'couples' -> 'coupl' and 'intimacy' -> 'intimaci'.
+    expect(rows[0].tsv).toContain("coupl");
+    expect(rows[0].tsv).toContain("intimaci");
 
     // Cleanup so the suite doesn't pollute later searches.
     await client`delete from resources where id = ${res.id}`;
