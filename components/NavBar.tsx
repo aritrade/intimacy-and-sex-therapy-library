@@ -41,18 +41,21 @@ export function NavBar({ authSlot }: { authSlot?: React.ReactNode }) {
     <header className="sticky top-0 z-30 border-b border-border bg-bg/80 backdrop-blur-md">
       <nav
         aria-label="Main navigation"
-        className="container-page flex h-14 items-center gap-3"
+        className="container-page flex h-14 items-center gap-2"
       >
         <Link
           href="/"
-          className="flex items-center gap-2 font-serif text-lg font-semibold tracking-tight text-ink-900 hover:text-accent-ink"
+          className="flex items-center gap-2 font-serif text-base font-semibold tracking-tight text-ink-900 hover:text-accent-ink whitespace-nowrap"
         >
           <Logo />
-          <span className="hidden sm:inline">Intimacy &amp; Sex Therapy Library</span>
-          <span className="sm:hidden">the Library</span>
+          <span className="hidden xl:inline">Intimacy &amp; Sex Therapy Library</span>
+          <span className="hidden md:inline xl:hidden">Intimacy &amp; Sex Library</span>
+          <span className="md:hidden">ISTL</span>
         </Link>
 
-        <ul className="hidden md:flex items-center gap-x-1 text-sm ml-2">
+        <span aria-hidden className="hidden md:block h-5 w-px bg-border ml-1" />
+
+        <ul className="hidden md:flex items-center gap-x-0.5 text-sm">
           {NAV.map((item) => {
             const active =
               pathname === item.href ||
@@ -61,7 +64,7 @@ export function NavBar({ authSlot }: { authSlot?: React.ReactNode }) {
               <li key={item.href}>
                 <Link
                   href={item.href}
-                  className={`relative rounded-lg px-3 py-2 text-ink-600 hover:text-ink-900 hover:bg-elevated transition-colors ${
+                  className={`relative rounded-lg px-2.5 py-2 whitespace-nowrap text-ink-600 hover:text-ink-900 hover:bg-elevated transition-colors ${
                     active ? "text-ink-900 bg-elevated" : ""
                   }`}
                 >
@@ -69,7 +72,7 @@ export function NavBar({ authSlot }: { authSlot?: React.ReactNode }) {
                   {active && (
                     <span
                       aria-hidden
-                      className="absolute inset-x-3 -bottom-px h-0.5 rounded-full bg-gradient-text"
+                      className="absolute inset-x-2.5 -bottom-px h-0.5 rounded-full bg-gradient-text"
                     />
                   )}
                 </Link>
@@ -78,13 +81,7 @@ export function NavBar({ authSlot }: { authSlot?: React.ReactNode }) {
           })}
         </ul>
 
-        <div className="ml-auto flex items-center gap-2">
-          <span
-            className="hidden lg:inline text-xs text-ink-400"
-            aria-hidden
-          >
-            18+ · educational
-          </span>
+        <div className="ml-auto flex items-center gap-1.5">
           <LanguageToggle />
           <ThemeToggle />
           {authSlot}

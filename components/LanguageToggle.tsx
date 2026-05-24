@@ -1,13 +1,17 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { LOCALE_COOKIE, LOCALE_COOKIE_MAX_AGE, normaliseLocale } from "@/lib/i18n/cookie";
 import { LOCALE_LABELS, type Locale } from "@/lib/i18n";
 
 const ORDER: Locale[] = ["en", "hi", "hinglish"];
 
 /**
- * Three-button language toggle for the navbar. State is persisted in:
+ * Compact language switcher for the navbar. Rendered as a single
+ * dropdown trigger to keep the top bar uncluttered; the menu lists
+ * each locale with its short code and full label.
+ *
+ * State is persisted in:
  *   - a long-lived cookie (`istl-locale`), so server components like
  *     the home page Welcome screen can render in the chosen language
  *     on the very next request, AND
@@ -20,50 +24,109 @@ const ORDER: Locale[] = ["en", "hi", "hinglish"];
 export function LanguageToggle() {
   const [mounted, setMounted] = useState(false);
   const [locale, setLocale] = useState<Locale>("en");
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    // 1. Cookie is the source of truth for SSR; mirror it into state.
     const fromCookie = readCookie(LOCALE_COOKIE);
     const fromStorage = safeGetItem("istl-locale-mirror");
     setLocale(normaliseLocale(fromCookie ?? fromStorage));
     setMounted(true);
   }, []);
 
+  useEffect(() => {
+    if (!open) return;
+    const onDocClick = (e: MouseEvent) => {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    document.addEventListener("mousedown", onDocClick);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDocClick);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
   function pick(next: Locale) {
+    setOpen(false);
     if (next === locale) return;
     writeCookie(LOCALE_COOKIE, next, LOCALE_COOKIE_MAX_AGE);
     safeSetItem("istl-locale-mirror", next);
-    // Hard reload to re-render server components with the new cookie.
-    // We use location.assign so it shows up cleanly in browser history.
     window.location.assign(window.location.pathname + window.location.search);
   }
 
   return (
-    <div
-      role="group"
-      aria-label="Language"
-      className="hidden sm:inline-flex items-center rounded-full border border-border bg-surface p-0.5 text-xs"
-      suppressHydrationWarning
-    >
-      {ORDER.map((id) => {
-        const active = mounted && locale === id;
-        return (
-          <button
-            key={id}
-            type="button"
-            onClick={() => pick(id)}
-            aria-pressed={active}
-            title={LOCALE_LABELS[id]}
-            className={`rounded-full px-2.5 py-1 transition-colors ${
-              active
-                ? "bg-accent-soft text-accent-ink"
-                : "text-ink-500 hover:text-ink-900 hover:bg-elevated"
-            }`}
-          >
-            {SHORT_LABELS[id]}
-          </button>
-        );
-      })}
+    <div ref={rootRef} className="relative" suppressHydrationWarning>
+      <button
+        type="button"
+        onClick={() => setOpen((s) => !s)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={`Language: ${mounted ? LOCALE_LABELS[locale] : "English"}`}
+        className="inline-flex h-9 items-center gap-1 rounded-full border border-border bg-surface px-2.5 text-xs font-medium text-ink-700 hover:text-ink-900 hover:bg-elevated transition-colors"
+      >
+        <span aria-hidden className="text-[13px] leading-none">
+          {mounted ? SHORT_LABELS[locale] : "EN"}
+        </span>
+        <svg
+          aria-hidden
+          width="10"
+          height="10"
+          viewBox="0 0 10 10"
+          className={`transition-transform ${open ? "rotate-180" : ""}`}
+        >
+          <path
+            d="M2 3.5L5 6.5L8 3.5"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            fill="none"
+          />
+        </svg>
+      </button>
+
+      {open && (
+        <div
+          role="menu"
+          aria-label="Choose language"
+          className="absolute right-0 mt-2 min-w-[180px] rounded-xl border border-border bg-surface shadow-lg overflow-hidden animate-fade-up"
+        >
+          <ul className="py-1 text-sm">
+            {ORDER.map((id) => {
+              const active = mounted && locale === id;
+              return (
+                <li key={id}>
+                  <button
+                    type="button"
+                    role="menuitemradio"
+                    aria-checked={active}
+                    onClick={() => pick(id)}
+                    className={`flex w-full items-center justify-between gap-3 px-3 py-2 text-left transition-colors ${
+                      active
+                        ? "bg-accent-soft text-accent-ink"
+                        : "text-ink-700 hover:bg-elevated hover:text-ink-900"
+                    }`}
+                  >
+                    <span>{LOCALE_LABELS[id]}</span>
+                    <span
+                      aria-hidden
+                      className={`text-xs font-medium ${
+                        active ? "text-accent-ink" : "text-ink-400"
+                      }`}
+                    >
+                      {SHORT_LABELS[id]}
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }
