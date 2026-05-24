@@ -12,7 +12,11 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  NODE_VERSION: "20"
+  # Node 22 (LTS) ships with npm 10.9+, which writes the same
+  # package-lock.json shape as the npm 11 used to author this lockfile.
+  # Pinning to Node 20 (npm 10.8) trips on optional cross-platform binaries
+  # for esbuild 0.28.x.
+  NODE_VERSION: "22"
 
 jobs:
   # -------------------------------------------------------------------------
