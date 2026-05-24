@@ -1,0 +1,55 @@
+{
+  "$schema": "https://raw.githubusercontent.com/GoogleChrome/lighthouse-ci/main/docs/configuration.md#configuration-schema",
+  "ci": {
+    "collect": {
+      "numberOfRuns": 2,
+      "settings": {
+        "preset": "desktop",
+        "skipAudits": [
+          "uses-http2",
+          "redirects-http",
+          "csp-xss"
+        ],
+        "extraHeaders": "{\"Cookie\":\"stl_age_18=1\"}"
+      },
+      "url": [
+        "http://localhost:3100/",
+        "http://localhost:3100/catalog",
+        "http://localhost:3100/library",
+        "http://localhost:3100/glossary",
+        "http://localhost:3100/about/privacy",
+        "http://localhost:3100/about/model"
+      ]
+    },
+    "upload": {
+      "target": "filesystem",
+      "outputDir": "./.lighthouseci"
+    },
+    "assert": {
+      "assertions": {
+        "categories:accessibility": ["error", { "minScore": 0.95 }],
+        "categories:best-practices": ["error", { "minScore": 0.9 }],
+        "categories:seo": ["error", { "minScore": 0.95 }],
+        "categories:performance": ["warn", { "minScore": 0.7 }],
+
+        "color-contrast": "error",
+        "html-has-lang": "error",
+        "html-lang-valid": "error",
+        "image-alt": "error",
+        "label": "error",
+        "link-name": "error",
+        "meta-description": "error",
+        "document-title": "error",
+        "viewport": "error",
+        "valid-lang": "error",
+        "is-crawlable": "error",
+        "robots-txt": "error",
+        "tap-targets": "warn",
+
+        "uses-text-compression": "warn",
+        "unused-javascript": "warn",
+        "render-blocking-resources": "warn"
+      }
+    }
+  }
+}

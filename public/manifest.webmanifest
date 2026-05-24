@@ -1,0 +1,25 @@
+{
+  "name": "Intimacy and Sex Therapy Library",
+  "short_name": "the Library",
+  "description": "Intimacy and Sex Therapy Library — an evidence-based, clinician-reviewed library on intimacy, sex therapy, and relationships, including Sahay, an India-aware AI wellness companion.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f8f6f2",
+  "theme_color": "#f8f6f2",
+  "orientation": "portrait",
+  "categories": ["health", "lifestyle", "education"],
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-maskable.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}

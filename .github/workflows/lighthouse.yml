@@ -1,0 +1,80 @@
+name: Lighthouse a11y + perf
+
+# Audits the production build with Lighthouse CI on every PR. The thresholds
+# in lighthouserc.json treat accessibility / best-practices / SEO as
+# blocking, and performance as a warning so a slow CI runner doesn't fail
+# the build for transient reasons.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: lh-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lighthouse:
+    name: lighthouse audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: sex-therapy-repo
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: sex-therapy-repo/package-lock.json
+
+      - run: npm ci
+
+      - name: Build production bundle
+        run: npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
+
+      - name: Start production server
+        env:
+          PORT: "3100"
+          KMS_PROVIDER: local
+          KMS_LOCAL_MASTER_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+          NEXT_PUBLIC_SITE_URL: "http://localhost:3100"
+          AUTH_SECRET: BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB0=
+          LOG_LEVEL: silent
+        run: |
+          npx next start -p 3100 > /tmp/lh-server.log 2>&1 &
+          echo $! > /tmp/lh-server.pid
+          # Wait until /api/ready returns 200, up to 60s.
+          for i in $(seq 1 60); do
+            if curl -fs http://localhost:3100/api/ready > /dev/null; then
+              echo "Server up after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Server failed to start"; cat /tmp/lh-server.log; exit 1
+
+      - name: Run Lighthouse CI
+        run: npx --yes @lhci/cli@0.14.x autorun
+        env:
+          LHCI_BUILD_CONTEXT__CURRENT_HASH: ${{ github.sha }}
+
+      - name: Upload Lighthouse reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lighthouse-report
+          path: sex-therapy-repo/.lighthouseci
+          retention-days: 14
+
+      - name: Stop server
+        if: always()
+        run: |
+          if [ -f /tmp/lh-server.pid ]; then
+            kill $(cat /tmp/lh-server.pid) 2>/dev/null || true
+          fi

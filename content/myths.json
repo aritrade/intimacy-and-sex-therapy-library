@@ -1,0 +1,93 @@
+{
+  "$schema": "MythsV1",
+  "_note": "India-aware misconceptions and their evidence-backed corrections. Each entry MUST be reviewed by a credentialed clinician before publishing. Citations point to peer-reviewed or authoritative clinical sources.",
+  "entries": [
+    {
+      "id": "semen-retention",
+      "myth": "Semen retention strengthens the body, mind, and 'vital force'.",
+      "context_in": "A common claim across pop wellness, social media, and parts of traditional discourse in India. Sometimes framed as 'dhat'.",
+      "fact": "Ejaculation has no measurable negative effect on physical strength, intelligence, or longevity. There is no validated benefit to retention. The term 'dhat syndrome' refers to a culture-bound distress about perceived semen loss — distress is real and treatable, but the underlying biological premise is unsupported.",
+      "what_helps": "If anxiety about semen, masturbation, or sexual function is causing distress, talk to a clinician — these concerns respond well to psychoeducation and short-term therapy.",
+      "sources": [
+        "Sumathipala, A., et al. (2004). Culture-bound syndromes: the story of dhat syndrome. Br J Psychiatry.",
+        "Mehta, V., et al. (2009). Dhat syndrome: a useful diagnostic entity in Indian culture."
+      ]
+    },
+    {
+      "id": "white-discharge",
+      "myth": "White vaginal discharge is a sign of weakness or means something is wrong.",
+      "context_in": "Often taught as 'leucorrhoea' anxiety in informal Indian settings. Triggers significant shame and unnecessary medication-seeking.",
+      "fact": "Most vaginal discharge is normal and changes through the menstrual cycle. It only needs medical attention if it is itchy, has a strong odour, is grey/green/yellow, or comes with pelvic pain or bleeding.",
+      "what_helps": "If there are no symptoms beyond regular discharge, no treatment is needed. If something feels off, see a gynaecologist — not a chemist.",
+      "sources": [
+        "ACOG Vaginitis Practice Bulletin.",
+        "RCOG Vaginal discharge guidance."
+      ]
+    },
+    {
+      "id": "hymen",
+      "myth": "An intact hymen proves virginity; a torn hymen proves sexual activity.",
+      "context_in": "Drives 'first-night' fears, 'two-finger tests' (banned in India by Supreme Court 2013) and harmful family pressure.",
+      "fact": "The hymen is a thin, variable membrane. Many people are born without a noticeable hymen, and it can stretch or tear from sport, tampons, or daily activities — or not at all from intercourse. It cannot be used to determine virginity. The two-finger test is unscientific and was banned in India.",
+      "what_helps": "Believe people. The presence or absence of bleeding on a wedding night says nothing about anyone's history.",
+      "sources": [
+        "WHO (2018). Eliminating virginity testing: an interagency statement.",
+        "Lilaramani v. State of Maharashtra (Indian Supreme Court, 2013) — ban on two-finger test."
+      ]
+    },
+    {
+      "id": "tightness",
+      "myth": "A 'tight' vagina means a woman is virginal or hasn't had many partners.",
+      "context_in": "Pop-culture and porn-driven myth that fuels shame, surgical procedures of dubious benefit, and abusive comparisons.",
+      "fact": "Vaginal muscle tone varies with arousal, age, hormones, childbirth, and pelvic-floor strength — not 'use'. Vaginas are not stretched permanently by sex with partners.",
+      "what_helps": "If pelvic-floor issues are present (urinary incontinence, prolapse), pelvic-floor physiotherapy is the evidence-based treatment.",
+      "sources": [
+        "Bo, K., et al. (2017). Pelvic floor muscle training. Cochrane review."
+      ]
+    },
+    {
+      "id": "always-ready-men",
+      "myth": "Real men are always ready for sex.",
+      "context_in": "Masculinity scripts globally and in India, often pressuring men into hiding sexual difficulties or not seeking help.",
+      "fact": "Healthy adult sexual response is variable. Stress, sleep, mood, medications, alcohol, hormones, and relationship dynamics all change desire and arousal. Difficulty with erections, desire, or ejaculation is common — not a defect of masculinity.",
+      "what_helps": "Talking to a urologist or sex therapist. ED, low desire, and PE all have effective, evidence-based treatments.",
+      "sources": [
+        "Rosen, R. C., et al. (2004). The MMAS study on aging male sexuality.",
+        "ESSM Guidelines on Erectile Dysfunction."
+      ]
+    },
+    {
+      "id": "porn-addict",
+      "myth": "Watching porn always means you are 'addicted' or that something is wrong.",
+      "context_in": "Pop framing of any porn use as pathology causes shame and discourages people from seeking help when use is genuinely problematic.",
+      "fact": "Most adults who watch porn do so without harm. A subset experience compulsive sexual behaviour — a real ICD-11 diagnosis (6C72) when use is out of control AND causes significant distress or harm. Distress itself, especially driven by religious or moral conflict, is not the same as compulsivity and is treated differently.",
+      "what_helps": "If porn use is interfering with relationships, work, or wellbeing, talk to a sex therapist. If the distress is from moral conflict rather than loss of control, that is also addressable in therapy.",
+      "sources": [
+        "ICD-11 6C72 — Compulsive Sexual Behaviour Disorder.",
+        "Grubbs, J. B., et al. (2020). Pornography Problems Due to Moral Incongruence."
+      ]
+    },
+    {
+      "id": "love-no-talk",
+      "myth": "If we really loved each other, we wouldn't need to talk about sex.",
+      "context_in": "A common belief that drives years of unmet needs and resentment — particularly in cultures where sex is hard to talk about.",
+      "fact": "Couples with the most satisfying sex lives talk about sex the most. Communication isn't a sign that love has failed; it's the mechanism by which intimacy grows.",
+      "what_helps": "Start small: name one thing you'd like more of and one you'd like less of. The Gottman 'soft start-up' format is a good template.",
+      "sources": [
+        "Mark, K. P., & Jozkowski, K. N. (2013). The Mediating Role of Sexual and Nonsexual Communication.",
+        "Gottman, J. M. The Seven Principles for Making Marriage Work."
+      ]
+    },
+    {
+      "id": "asex-not-real",
+      "myth": "Asexuality isn't a real orientation — they just haven't met the right person.",
+      "context_in": "Common dismissal globally and in India.",
+      "fact": "Asexuality is a recognised sexual orientation across the major clinical bodies. People on the asexual spectrum may experience little, situational, or no sexual attraction; this is not a disorder, a delay, or a phase.",
+      "what_helps": "If someone tells you they are ace, demi, or gray-ace, believe them and ask what they need from you.",
+      "sources": [
+        "AVEN — Asexual Visibility and Education Network.",
+        "Bogaert, A. F. (2015). Understanding Asexuality."
+      ]
+    }
+  ]
+}

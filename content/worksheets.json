@@ -1,0 +1,116 @@
+{
+  "worksheets": [
+    {
+      "id": "sensate-focus-week1",
+      "title": "Sensate focus — week 1 worksheet",
+      "audience": "Couples",
+      "minutes": 20,
+      "intro": "Sensate focus is a structured touch exercise that removes performance pressure and rebuilds embodied closeness. This worksheet walks you through one 20-minute session.",
+      "sections": [
+        {
+          "heading": "Before you start",
+          "bullets": [
+            "Agree on a clear yes/no signal you can use any time without explanation.",
+            "No goal of intercourse or orgasm. Really.",
+            "Phones in another room. Soft light. Warm room.",
+            "Decide who is the giver and who is the receiver first. You'll swap halfway."
+          ]
+        },
+        {
+          "heading": "Round 1 — 8 minutes",
+          "bullets": [
+            "Receiver: lie down, eyes closed, focus on sensation.",
+            "Giver: slow, curious touch on non-genital areas only — back, arms, legs, scalp.",
+            "If either of you feels pressure to escalate, pause and breathe."
+          ]
+        },
+        {
+          "heading": "Swap — 8 minutes",
+          "bullets": [
+            "Same rules, swapped roles.",
+            "Notice without commenting. Words come later."
+          ]
+        },
+        {
+          "heading": "Debrief — 4 minutes",
+          "bullets": [
+            "What felt good?",
+            "Where did your mind wander?",
+            "What's one thing you'd like to try again next time?"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "brakes-and-accelerators",
+      "title": "Mapping your brakes and accelerators",
+      "audience": "Individuals",
+      "minutes": 15,
+      "intro": "Based on Bancroft & Janssen's dual-control model. Most low-desire situations are about brakes (what turns you off) more than missing accelerators (what turns you on). This is a private worksheet — don't share unless you want to.",
+      "sections": [
+        {
+          "heading": "Accelerators — what turns you on?",
+          "bullets": [
+            "Specific kinds of touch:",
+            "Specific contexts (time of day, alone, partnered, mood):",
+            "Specific words, sounds, or scents:",
+            "Specific emotional states (safety, novelty, focus, playfulness):"
+          ]
+        },
+        {
+          "heading": "Brakes — what turns you off?",
+          "bullets": [
+            "Body-related (tiredness, illness, body image):",
+            "Stress-related (work, money, family):",
+            "Relationship-related (resentment, mismatched effort):",
+            "Performance-related (worry about how I'm doing):",
+            "Interpersonal (fear of judgment, history of shaming):"
+          ]
+        },
+        {
+          "heading": "One brake to ease this week",
+          "bullets": [
+            "Pick the most easeable, not the most painful.",
+            "What is one small action that would lower it 10%?"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "repair-after-rupture",
+      "title": "Repair after a fight — a 10-minute script",
+      "audience": "Couples",
+      "minutes": 10,
+      "intro": "Every couple ruptures. Healthy couples repair. Use this script after the heat has cooled, ideally within 24 hours.",
+      "sections": [
+        {
+          "heading": "Step 1 — Acknowledge the hurt (2 min)",
+          "bullets": [
+            "Name what happened, not who's right. Example: 'When you raised your voice, I shut down.'",
+            "Avoid 'you always' and 'you never'."
+          ]
+        },
+        {
+          "heading": "Step 2 — Take a piece of responsibility (2 min)",
+          "bullets": [
+            "Find one thing you contributed, however small. Example: 'I came in defensive because I was already stressed about work.'"
+          ]
+        },
+        {
+          "heading": "Step 3 — Repair attempt (3 min)",
+          "bullets": [
+            "Offer a repair. It can be tender, silly, or direct. Example: 'I love you. Let's try this one again.'",
+            "If it lands, the rupture closes. If not, that's a sign for couples therapy."
+          ]
+        },
+        {
+          "heading": "Step 4 — Plan for next time (3 min)",
+          "bullets": [
+            "What signal will you give next time you're flooded?",
+            "What does a 20-minute break look like? (drink water, walk, return at a specific time)"
+          ]
+        }
+      ]
+    }
+  ]
+}

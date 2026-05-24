@@ -1,0 +1,38 @@
+[
+  {
+    "sourceSlug": "pmc-oa",
+    "title": "Group Mindfulness-Based Therapy for Women with Sexual Desire and Arousal Difficulties: A Randomized Trial",
+    "authors": ["Brotto, Lori A.", "Basson, Rosemary"],
+    "authorCredentials": ["UBC, Department of Obstetrics and Gynaecology"],
+    "publishedAt": "2014-06-01",
+    "language": "en",
+    "license": "oa_pmc",
+    "externalUrl": "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4079478/",
+    "abstract": "RCT of an 8-week group MBT for women with low desire/arousal. Significant improvements in sexual desire, arousal, satisfaction, and overall sexual functioning vs. waitlist.",
+    "kind": "article"
+  },
+  {
+    "sourceSlug": "pmc-oa",
+    "title": "Predictors of Sexual Desire Discrepancies in Couples",
+    "authors": ["Sutherland, Sarah E.", "Rehman, Uzma S.", "Goodnight, Jackson A.", "et al."],
+    "authorCredentials": ["University of Waterloo"],
+    "publishedAt": "2015-08-01",
+    "language": "en",
+    "license": "oa_pmc",
+    "externalUrl": "https://pubmed.ncbi.nlm.nih.gov/26252403/",
+    "abstract": "Dyadic study identifying communication, attachment, and stress predictors of desire discrepancies in long-term couples.",
+    "kind": "article"
+  },
+  {
+    "sourceSlug": "nhs",
+    "title": "Loss of Libido (Reduced Sex Drive) — NHS Health A to Z",
+    "authors": ["NHS"],
+    "authorCredentials": ["UK National Health Service editorial board"],
+    "publishedAt": "2022-03-01",
+    "language": "en",
+    "license": "govt_work",
+    "externalUrl": "https://www.nhs.uk/conditions/loss-of-libido/",
+    "abstract": "Patient-facing guide to common contributors to loss of libido — relationship factors, mental-health, hormonal change, medication side-effects — and the NHS care pathway.",
+    "kind": "article"
+  }
+]

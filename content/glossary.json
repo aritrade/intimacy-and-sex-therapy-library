@@ -1,0 +1,95 @@
+{
+  "$schema": "GlossaryV1",
+  "_note": "Plain-language definitions of clinical terms. Each entry MUST be human-reviewed before publishing. Sources are real, citable, and refer to widely-used clinical reference texts (DSM-5-TR, ICD-11, etc.).",
+  "entries": [
+    {
+      "term": "Vaginismus",
+      "aka": ["Genito-pelvic pain/penetration disorder", "GPPPD"],
+      "category": "dysfunction",
+      "plain": "Involuntary tightening of the muscles around the vagina that makes any kind of vaginal entry painful or impossible — even when the person wants the entry. It is treatable with pelvic-floor physiotherapy, gradual exposure, and sometimes therapy for fear or trauma.",
+      "clinical": "DSM-5-TR groups vaginismus and dyspareunia together under Genito-Pelvic Pain/Penetration Disorder. ICD-11 lists it as HA20.0.",
+      "see_also": ["dyspareunia", "pelvic_floor"]
+    },
+    {
+      "term": "Dyspareunia",
+      "category": "dysfunction",
+      "plain": "Recurrent or persistent pain during sexual activity. It can have many causes — from infections and skin conditions to muscle tension, hormones, or fear. It is investigated medically first, then often involves both pelvic-floor PT and therapy.",
+      "clinical": "DSM-5-TR: Genito-Pelvic Pain/Penetration Disorder. ICD-11 HA20."
+    },
+    {
+      "term": "Erectile dysfunction",
+      "aka": ["ED"],
+      "category": "dysfunction",
+      "plain": "Difficulty getting or keeping an erection firm enough for the sex you want, often enough to be distressing. ED is very common and usually treatable. Causes can be physical (cardiovascular, diabetes, hormones, medications), psychological (anxiety, depression, relationship distress), or both.",
+      "clinical": "DSM-5-TR: Erectile Disorder. ICD-11 HA01."
+    },
+    {
+      "term": "Premature ejaculation",
+      "aka": ["PE"],
+      "category": "dysfunction",
+      "plain": "Ejaculation that consistently happens sooner than the person or their partner would like, with little control, causing distress. Behavioural techniques (squeeze, stop-start), pelvic-floor work, certain medications, and therapy all help.",
+      "clinical": "DSM-5-TR: Premature (Early) Ejaculation. ICD-11 HA03."
+    },
+    {
+      "term": "Female sexual interest/arousal disorder",
+      "aka": ["FSIAD"],
+      "category": "dysfunction",
+      "plain": "Reduced or absent sexual interest, sexual thoughts, or arousal that is distressing for the person and lasts at least six months. Often responds well to combined therapy approaches and to addressing relationship, hormonal, and medication factors.",
+      "clinical": "DSM-5-TR: Female Sexual Interest/Arousal Disorder."
+    },
+    {
+      "term": "Compulsive sexual behaviour disorder",
+      "aka": ["CSBD"],
+      "category": "behavior",
+      "plain": "A pattern of failing to control intense, repetitive sexual urges or behaviours that becomes distressing or harmful to work, relationships, or health. It is a behaviour disorder, NOT an addiction in the substance sense — careful framing matters.",
+      "clinical": "ICD-11 6C72. Not in DSM-5-TR. Avoid 'sex addiction' framing in clinical contexts."
+    },
+    {
+      "term": "Responsive desire",
+      "aka": ["Basson model"],
+      "category": "model",
+      "plain": "Many people don't feel sexual desire out of nowhere — they feel it after they start being intimate, when arousal sets in. This is normal and called 'responsive desire'. It does not mean something is wrong.",
+      "clinical": "Basson, R. (2000). The female sexual response: A different model. J Sex Marital Ther."
+    },
+    {
+      "term": "Dual-control model",
+      "aka": ["Bancroft & Janssen"],
+      "category": "model",
+      "plain": "Sexual response works through both an accelerator (things that turn you on) and brakes (things that turn you off). Most sexual difficulties are explained by overactive brakes — anxiety, distraction, body shame — not by an underpowered accelerator.",
+      "clinical": "Bancroft, J. & Janssen, E. (2000). Dual control model of sexual response."
+    },
+    {
+      "term": "Sensate focus",
+      "category": "modality",
+      "plain": "A structured set of touch exercises, originally developed by Masters and Johnson. Couples take intercourse off the table for a while and rebuild physical connection through non-demand touch in stages. Strong evidence base for many sexual concerns.",
+      "clinical": "Masters & Johnson, Human Sexual Inadequacy (1970). Updated repeatedly; Linda Weiner & Constance Avery-Clark have a current manual."
+    },
+    {
+      "term": "PLISSIT model",
+      "aka": ["EX-PLISSIT"],
+      "category": "modality",
+      "plain": "A counselling framework with four levels: Permission, Limited Information, Specific Suggestions, and Intensive Therapy. Lets clinicians help at the level a person actually needs without going beyond their training.",
+      "clinical": "Annon, J. (1976). The PLISSIT model. Davis, S. & Taylor, B. (2006). EX-PLISSIT."
+    },
+    {
+      "term": "Asexual spectrum",
+      "aka": ["ace", "ace-spectrum"],
+      "category": "identity",
+      "plain": "A range of identities where a person experiences little, situational, or no sexual attraction. Includes asexual, gray-asexual (gray-ace), and demisexual. Asexuality is an orientation, not a disorder; it can co-exist with romantic attraction or with aromanticism.",
+      "clinical": "Recognised by APA, AASECT, and clinical guidelines as a valid sexual orientation."
+    },
+    {
+      "term": "Gender-affirming care",
+      "category": "care_pathway",
+      "plain": "Medical, psychological, and social care that supports a transgender or gender-diverse person in living congruently with their identity. WPATH SOC8 is the canonical guideline.",
+      "clinical": "WPATH Standards of Care, Version 8 (Coleman et al., 2022)."
+    },
+    {
+      "term": "Consensual non-monogamy",
+      "aka": ["CNM", "ethical non-monogamy", "ENM"],
+      "category": "relationship",
+      "plain": "Relationship structures where everyone involved knows about and agrees to multiple sexual or romantic connections — including polyamory, open relationships, swinging, and relationship anarchy. The core requirements are honesty, ongoing consent, and care.",
+      "clinical": "Reviewed in Conley et al. (2017). Investigating the persistence of stigma against CNM."
+    }
+  ]
+}

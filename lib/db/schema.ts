@@ -1,0 +1,768 @@
+import { sql } from "drizzle-orm";
+import {
+  bigint,
+  boolean,
+  customType,
+  index,
+  integer,
+  jsonb,
+  pgEnum,
+  pgTable,
+  primaryKey,
+  text,
+  timestamp,
+  uuid,
+  varchar,
+} from "drizzle-orm/pg-core";
+
+/**
+ * pgvector custom type. We pin to 1536 to match OpenAI text-embedding-3-small.
+ * If we switch embedding models we'll add a second table rather than mutate
+ * an existing one in place.
+ */
+const vector = customType<{ data: number[]; driverData: string }>({
+  dataType() {
+    return "vector(1536)";
+  },
+  toDriver(value: number[]) {
+    return `[${value.join(",")}]`;
+  },
+});
+
+const tsvector = customType<{ data: string; driverData: string }>({
+  dataType() {
+    return "tsvector";
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Source allowlist + content corpus
+// ---------------------------------------------------------------------------
+
+export const sourceKind = pgEnum("source_kind", [
+  "journal",
+  "clinical_body",
+  "university",
+  "health_authority",
+  "publisher",
+  "video_channel",
+  "podcast",
+  "ngo",
+  "government",
+]);
+
+export const trustTier = pgEnum("trust_tier", ["tier_1", "tier_2", "tier_3"]);
+
+export const sources = pgTable("sources", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  slug: varchar("slug", { length: 96 }).notNull().unique(),
+  name: text("name").notNull(),
+  kind: sourceKind("kind").notNull(),
+  url: text("url").notNull(),
+  trustTier: trustTier("trust_tier").notNull(),
+  notes: text("notes"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const resourceKind = pgEnum("resource_kind", [
+  "article",
+  "video",
+  "podcast_episode",
+  "book",
+  "guideline",
+  "worksheet",
+]);
+
+export const license = pgEnum("license", [
+  "cc_by",
+  "cc_by_sa",
+  "cc_by_nc",
+  "cc_by_nc_sa",
+  "cc_by_nc_nd",
+  "cc0",
+  "public_domain",
+  "govt_work",
+  "oa_pmc",
+  "copyrighted",
+  "original",
+]);
+
+export const resources = pgTable(
+  "resources",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    slug: varchar("slug", { length: 200 }).notNull().unique(),
+    sourceId: uuid("source_id")
+      .references(() => sources.id, { onDelete: "restrict" })
+      .notNull(),
+    kind: resourceKind("kind").notNull(),
+    title: text("title").notNull(),
+    authors: jsonb("authors").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+    authorCredentials: jsonb("author_credentials")
+      .$type<string[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    publishedAt: timestamp("published_at", { withTimezone: true }),
+    language: varchar("language", { length: 12 }).notNull().default("en"),
+    license: license("license").notNull(),
+    fullTextAvailable: boolean("full_text_available").notNull().default(false),
+    externalUrl: text("external_url").notNull(),
+    pdfBlobUrl: text("pdf_blob_url"),
+    summary: text("summary"),
+    curatorNotes: text("curator_notes"),
+    isPublished: boolean("is_published").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    bySource: index("resources_source_idx").on(t.sourceId),
+    byKind: index("resources_kind_idx").on(t.kind),
+    byPublished: index("resources_published_idx").on(t.isPublished),
+  }),
+);
+
+export const tagCategory = pgEnum("tag_category", [
+  "topic",
+  "difficulty",
+  "population",
+  "modality",
+]);
+
+export const tags = pgTable(
+  "tags",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    name: varchar("name", { length: 96 }).notNull(),
+    category: tagCategory("category").notNull(),
+    description: text("description"),
+  },
+  (t) => ({
+    uniqName: index("tags_name_category_idx").on(t.category, t.name),
+  }),
+);
+
+export const resourceTags = pgTable(
+  "resource_tags",
+  {
+    resourceId: uuid("resource_id")
+      .references(() => resources.id, { onDelete: "cascade" })
+      .notNull(),
+    tagId: uuid("tag_id")
+      .references(() => tags.id, { onDelete: "cascade" })
+      .notNull(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.resourceId, t.tagId] }),
+    byTag: index("resource_tags_tag_idx").on(t.tagId),
+  }),
+);
+
+export const chunks = pgTable(
+  "chunks",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    resourceId: uuid("resource_id")
+      .references(() => resources.id, { onDelete: "cascade" })
+      .notNull(),
+    ord: integer("ord").notNull(),
+    content: text("content").notNull(),
+    tokens: integer("tokens").notNull(),
+    pageNum: integer("page_num"),
+    timestampSeconds: integer("timestamp_seconds"),
+    tsv: tsvector("tsv"),
+    embedding: vector("embedding"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    byResource: index("chunks_resource_idx").on(t.resourceId),
+    // Note: HNSW + GIN indexes are emitted in a hand-written migration in
+    // drizzle/0001_indexes.sql since drizzle-kit doesn't yet model them well.
+  }),
+);
+
+export const variantType = pgEnum("variant_type", [
+  "plain_language",
+  "audio_tts",
+  "translated_hi",
+  "translated_hinglish",
+  "translated_ta",
+  "translated_bn",
+]);
+
+export const resourceVariants = pgTable("resource_variants", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  resourceId: uuid("resource_id")
+    .references(() => resources.id, { onDelete: "cascade" })
+    .notNull(),
+  variantType: variantType("variant_type").notNull(),
+  content: text("content").notNull(),
+  audioBlobUrl: text("audio_blob_url"),
+  reviewerId: uuid("reviewer_id"),
+  reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+// ---------------------------------------------------------------------------
+// Clinical advisors + reviews
+// ---------------------------------------------------------------------------
+
+export const clinicalAdvisors = pgTable("clinical_advisors", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  name: text("name").notNull(),
+  credentials: jsonb("credentials").$type<string[]>().notNull(),
+  bio: text("bio"),
+  photoUrl: text("photo_url"),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const reviews = pgTable(
+  "reviews",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    resourceId: uuid("resource_id")
+      .references(() => resources.id, { onDelete: "cascade" })
+      .notNull(),
+    reviewerId: uuid("reviewer_id")
+      .references(() => clinicalAdvisors.id)
+      .notNull(),
+    notes: text("notes"),
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true }).defaultNow().notNull(),
+    nextReviewDue: timestamp("next_review_due", { withTimezone: true }).notNull(),
+  },
+  (t) => ({
+    byResource: index("reviews_resource_idx").on(t.resourceId),
+    byDue: index("reviews_due_idx").on(t.nextReviewDue),
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// Clinician handoff directory (India-first)
+// ---------------------------------------------------------------------------
+
+export const affordabilityTier = pgEnum("affordability_tier", [
+  "free",
+  "low",
+  "mid",
+  "high",
+]);
+
+export const clinicianDirectory = pgTable(
+  "clinician_directory",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    name: text("name").notNull(),
+    credentials: jsonb("credentials").$type<string[]>().notNull(),
+    city: varchar("city", { length: 96 }),
+    country: varchar("country", { length: 4 }).notNull(),
+    languages: jsonb("languages").$type<string[]>().notNull(),
+    modalities: jsonb("modalities").$type<string[]>().notNull(),
+    teleConsult: boolean("tele_consult").notNull().default(false),
+    affordability: affordabilityTier("affordability").notNull().default("mid"),
+    contactUrl: text("contact_url"),
+    notes: text("notes"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    byCountry: index("clinicians_country_idx").on(t.country),
+    byCity: index("clinicians_city_idx").on(t.city),
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// Validated assessments (FSFI, IIEF-5, GRISS, FSDS-R, NSSS, PHQ-9, GAD-7)
+// Responses are encrypted; this is sensitive personal data under DPDP.
+// ---------------------------------------------------------------------------
+
+export const instrument = pgEnum("instrument", [
+  "fsfi",
+  "iief5",
+  "griss",
+  "fsds_r",
+  "nsss",
+  "phq9",
+  "gad7",
+]);
+
+export const assessments = pgTable("assessments", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: uuid("user_id"), // nullable for anon
+  instrument: instrument("instrument").notNull(),
+  responsesCiphertext: text("responses_ciphertext").notNull(),
+  responsesIv: text("responses_iv").notNull(),
+  responsesAuthTag: text("responses_auth_tag").notNull(),
+  score: integer("score").notNull(),
+  interpretationKey: varchar("interpretation_key", { length: 64 }).notNull(),
+  takenAt: timestamp("taken_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+// ---------------------------------------------------------------------------
+// Learning paths
+// ---------------------------------------------------------------------------
+
+export const pathItemKind = pgEnum("path_item_kind", [
+  "read",
+  "watch",
+  "listen",
+  "reflect",
+  "worksheet",
+  "assessment",
+]);
+
+export const learningPaths = pgTable("learning_paths", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  slug: varchar("slug", { length: 200 }).notNull().unique(),
+  title: text("title").notNull(),
+  summary: text("summary").notNull(),
+  targetAudience: text("target_audience"),
+  estMinutes: integer("est_minutes").notNull().default(60),
+  language: varchar("language", { length: 12 }).notNull().default("en"),
+  isPublished: boolean("is_published").notNull().default(false),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const pathItems = pgTable(
+  "path_items",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    pathId: uuid("path_id")
+      .references(() => learningPaths.id, { onDelete: "cascade" })
+      .notNull(),
+    ord: integer("ord").notNull(),
+    resourceId: uuid("resource_id").references(() => resources.id, {
+      onDelete: "restrict",
+    }),
+    kind: pathItemKind("kind").notNull(),
+    optional: boolean("optional").notNull().default(false),
+    note: text("note"),
+  },
+  (t) => ({
+    byPath: index("path_items_path_idx").on(t.pathId, t.ord),
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// Per-user state (bookmarks, progress, private notes)
+// ---------------------------------------------------------------------------
+
+export const bookmarks = pgTable(
+  "bookmarks",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id").notNull(),
+    resourceId: uuid("resource_id")
+      .references(() => resources.id, { onDelete: "cascade" })
+      .notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    byUser: index("bookmarks_user_idx").on(t.userId),
+  }),
+);
+
+export const pathProgress = pgTable(
+  "path_progress",
+  {
+    userId: uuid("user_id").notNull(),
+    pathId: uuid("path_id")
+      .references(() => learningPaths.id, { onDelete: "cascade" })
+      .notNull(),
+    completedItems: jsonb("completed_items").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.userId, t.pathId] }),
+  }),
+);
+
+export const privateNotes = pgTable(
+  "private_notes",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id").notNull(),
+    resourceId: uuid("resource_id")
+      .references(() => resources.id, { onDelete: "cascade" })
+      .notNull(),
+    bodyCiphertext: text("body_ciphertext").notNull(),
+    bodyIv: text("body_iv").notNull(),
+    bodyAuthTag: text("body_auth_tag").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    byUserResource: index("private_notes_user_resource_idx").on(t.userId, t.resourceId),
+  }),
+);
+
+export const coupleLinks = pgTable("couple_links", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  partnerAUserId: uuid("partner_a_user_id").notNull(),
+  partnerBUserId: uuid("partner_b_user_id").notNull(),
+  consentedAtA: timestamp("consented_at_a", { withTimezone: true }),
+  consentedAtB: timestamp("consented_at_b", { withTimezone: true }),
+  revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+// ---------------------------------------------------------------------------
+// Citation-mode chat (/chat) sessions and feedback
+// ---------------------------------------------------------------------------
+
+export const chatSessions = pgTable("chat_sessions", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: uuid("user_id"),
+  scopedResourceId: uuid("scoped_resource_id").references(() => resources.id),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const chatMessages = pgTable("chat_messages", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  sessionId: uuid("session_id")
+    .references(() => chatSessions.id, { onDelete: "cascade" })
+    .notNull(),
+  role: varchar("role", { length: 16 }).notNull(),
+  content: text("content").notNull(),
+  citations: jsonb("citations").$type<{ resourceId: string; chunkId: string }[]>(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+// ---------------------------------------------------------------------------
+// Sahay companion sessions — encrypted ciphertext only.
+// Plaintext NEVER touches a column in this table.
+// ---------------------------------------------------------------------------
+
+export const companionMode = pgEnum("companion_mode", [
+  "ephemeral",
+  "encrypted",
+  "vault",
+]);
+
+export const pace = pgEnum("pace", ["slow", "normal"]);
+export const directness = pgEnum("directness", ["gentle", "matter_of_fact"]);
+
+export const companionSessions = pgTable(
+  "companion_sessions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id"), // nullable for anon
+    mode: companionMode("mode").notNull(),
+    dekWrapped: text("dek_wrapped"), // base64; null for ephemeral
+    kmsKeyId: text("kms_key_id"),
+    language: varchar("language", { length: 12 }).notNull().default("en"),
+    pronouns: varchar("pronouns", { length: 48 }),
+    pace: pace("pace").notNull().default("normal"),
+    directness: directness("directness").notNull().default("gentle"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+  },
+  (t) => ({
+    byUser: index("companion_sessions_user_idx").on(t.userId),
+    byExpires: index("companion_sessions_expires_idx").on(t.expiresAt),
+  }),
+);
+
+export const companionMessages = pgTable(
+  "companion_messages",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    sessionId: uuid("session_id")
+      .references(() => companionSessions.id, { onDelete: "cascade" })
+      .notNull(),
+    role: varchar("role", { length: 16 }).notNull(),
+    ciphertext: text("ciphertext").notNull(),
+    iv: text("iv").notNull(),
+    authTag: text("auth_tag").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    bySession: index("companion_messages_session_idx").on(t.sessionId, t.createdAt),
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// Consents (DPDP/GDPR audit trail). Cookie is the live state; this table
+// is the durable, server-side audit record.
+// ---------------------------------------------------------------------------
+
+export const consents = pgTable(
+  "consents",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id"),
+    sessionFingerprint: varchar("session_fingerprint", { length: 64 }), // hashed cookie id, not PII
+    purpose: varchar("purpose", { length: 64 }).notNull(),
+    purposeVersion: integer("purpose_version").notNull(),
+    granted: boolean("granted").notNull(),
+    ts: timestamp("ts", { withTimezone: true }).defaultNow().notNull(),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    legalBasisIn: varchar("legal_basis_in", { length: 64 }).notNull(),
+    legalBasisEu: varchar("legal_basis_eu", { length: 64 }).notNull(),
+  },
+  (t) => ({
+    byUser: index("consents_user_idx").on(t.userId),
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// Crisis events + content-free audit log + eval runs
+// ---------------------------------------------------------------------------
+
+export const crisisEvents = pgTable("crisis_events", {
+  id: bigint("id", { mode: "bigint" }).generatedAlwaysAsIdentity().primaryKey(),
+  sessionFingerprint: varchar("session_fingerprint", { length: 64 }).notNull(),
+  surface: varchar("surface", { length: 16 }).notNull(), // chat | companion
+  category: varchar("category", { length: 32 }).notNull(),
+  ts: timestamp("ts", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const auditLog = pgTable("audit_log", {
+  id: bigint("id", { mode: "bigint" }).generatedAlwaysAsIdentity().primaryKey(),
+  actorHash: varchar("actor_hash", { length: 64 }).notNull(),
+  action: varchar("action", { length: 64 }).notNull(),
+  meta: jsonb("meta"),
+  ts: timestamp("ts", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const evalRuns = pgTable("eval_runs", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  modelId: varchar("model_id", { length: 64 }).notNull(),
+  promptSetVersion: varchar("prompt_set_version", { length: 32 }).notNull(),
+  refusalRate: integer("refusal_rate_bp").notNull(), // basis points (0-10000)
+  citationFaithfulness: integer("citation_faithfulness_bp").notNull(),
+  empathyScore: integer("empathy_score_x100").notNull(), // 0-500 -> 0.00-5.00
+  biasFlags: jsonb("bias_flags"),
+  ranAt: timestamp("ran_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+// ---------------------------------------------------------------------------
+// Phase 6: short-form content factory + social publishing
+// ---------------------------------------------------------------------------
+
+export const draftStatus = pgEnum("draft_status", [
+  "script_draft",
+  "clinician_reviewed",
+  "rendered",
+  "editor_reviewed",
+  "scheduled",
+  "posted",
+  "failed",
+  "taken_down",
+]);
+
+export const contentDrafts = pgTable("content_drafts", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  resourceId: uuid("resource_id")
+    .references(() => resources.id, { onDelete: "set null" }),
+  kind: varchar("kind", { length: 16 }).notNull(), // reel | short | feed
+  language: varchar("language", { length: 12 }).notNull().default("en"),
+  brief: text("brief").notNull(),
+  scriptMd: text("script_md"),
+  voiceoverUrl: text("voiceover_url"),
+  videoUrl: text("video_url"),
+  captionsSrt: text("captions_srt"),
+  status: draftStatus("status").notNull().default("script_draft"),
+  clinicianReviewerId: uuid("clinician_reviewer_id").references(() => clinicalAdvisors.id),
+  editorReviewerId: uuid("editor_reviewer_id"),
+  scheduledAt: timestamp("scheduled_at", { withTimezone: true }),
+  postedAt: timestamp("posted_at", { withTimezone: true }),
+  platformPostIds: jsonb("platform_post_ids"),
+  takedownEvents: jsonb("takedown_events").$type<unknown[]>().default(sql`'[]'::jsonb`),
+  /**
+   * Append-only structured feedback from clinician / editor reviewers.
+   * Each entry: { reason, notes, by (hashed actor), role, ts }.
+   * Notes are scrubbed by lib/observability/scrub.ts before insertion.
+   */
+  reviewerNotes: jsonb("reviewer_notes")
+    .$type<
+      Array<{
+        reason: string;
+        notes?: string;
+        by: string;
+        role: "clinician" | "editor" | "admin";
+        ts: string;
+      }>
+    >()
+    .default(sql`'[]'::jsonb`),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const socialAccounts = pgTable("social_accounts", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  platform: varchar("platform", { length: 16 }).notNull(), // instagram | youtube
+  handle: varchar("handle", { length: 64 }).notNull(),
+  accountId: varchar("account_id", { length: 96 }).notNull(),
+  accessTokenEncrypted: text("access_token_encrypted").notNull(),
+  refreshTokenEncrypted: text("refresh_token_encrypted"),
+  scopes: jsonb("scopes").$type<string[]>().notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const postMetrics = pgTable("post_metrics", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  draftId: uuid("draft_id")
+    .references(() => contentDrafts.id, { onDelete: "cascade" })
+    .notNull(),
+  platform: varchar("platform", { length: 16 }).notNull(),
+  views: integer("views").notNull().default(0),
+  likes: integer("likes").notNull().default(0),
+  comments: integer("comments").notNull().default(0),
+  saves: integer("saves").notNull().default(0),
+  linkClicks: integer("link_clicks").notNull().default(0),
+  pulledAt: timestamp("pulled_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+// ---------------------------------------------------------------------------
+// Auth.js (NextAuth v5) tables — Drizzle adapter shape.
+// Names mirror the Auth.js docs so the adapter recognises them.
+// ---------------------------------------------------------------------------
+
+export const users = pgTable("users", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  name: text("name"),
+  email: varchar("email", { length: 320 }).unique(),
+  emailVerified: timestamp("emailVerified", { withTimezone: true }),
+  image: text("image"),
+  // Region helps Sahay/Companion produce locale-aware crisis lines and pricing.
+  // Optional — only set if the user opts in.
+  region: varchar("region", { length: 64 }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const accounts = pgTable(
+  "accounts",
+  {
+    userId: uuid("userId")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    type: varchar("type", { length: 32 }).notNull(),
+    provider: varchar("provider", { length: 64 }).notNull(),
+    providerAccountId: varchar("providerAccountId", { length: 128 }).notNull(),
+    refresh_token: text("refresh_token"),
+    access_token: text("access_token"),
+    expires_at: integer("expires_at"),
+    token_type: varchar("token_type", { length: 32 }),
+    scope: text("scope"),
+    id_token: text("id_token"),
+    session_state: text("session_state"),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.provider, t.providerAccountId] }),
+  }),
+);
+
+export const sessions = pgTable("sessions", {
+  sessionToken: varchar("sessionToken", { length: 256 }).primaryKey(),
+  userId: uuid("userId")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  expires: timestamp("expires", { withTimezone: true }).notNull(),
+});
+
+export const verificationTokens = pgTable(
+  "verificationTokens",
+  {
+    identifier: varchar("identifier", { length: 320 }).notNull(),
+    token: varchar("token", { length: 256 }).notNull(),
+    expires: timestamp("expires", { withTimezone: true }).notNull(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.identifier, t.token] }),
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// Roles
+// ---------------------------------------------------------------------------
+
+export const userRole = pgEnum("user_role", ["user", "clinician", "editor", "admin"]);
+
+export const userRoles = pgTable(
+  "user_roles",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    role: userRole("role").notNull(),
+    grantedAt: timestamp("granted_at", { withTimezone: true }).defaultNow().notNull(),
+    grantedBy: uuid("granted_by").references(() => users.id, { onDelete: "set null" }),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.userId, t.role] }),
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// Per-user persisted state.
+//
+// Compliance note: assessment results store only score/severity/flags — never
+// the user's individual answers. Crisis flags are kept so we can show the user
+// "you flagged item 9 of PHQ-9 last time" without storing the answer.
+// ---------------------------------------------------------------------------
+
+export const assessmentResults = pgTable(
+  "assessment_results",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    instrumentId: varchar("instrument_id", { length: 64 }).notNull(), // e.g. phq9, gad7, nsss-s
+    rawScore: integer("raw_score").notNull(),
+    severity: varchar("severity", { length: 32 }).notNull(),
+    flags: jsonb("flags").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+    takenAt: timestamp("taken_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    byUser: index("assessment_results_user_idx").on(t.userId, t.takenAt),
+  }),
+);
+
+/**
+ * Per-user progress on the file-defined seeded paths in lib/paths/seeds.ts.
+ * Distinct from the older `path_progress` table (which tracks DB-stored
+ * `learning_paths` rows by UUID + completedItems JSON). The seeded paths are
+ * versioned in code, so we key by slug + stepIndex and rely on the file as
+ * the source of truth for step content.
+ */
+export const userPathProgress = pgTable(
+  "user_path_progress",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    pathSlug: varchar("path_slug", { length: 64 }).notNull(),
+    stepIndex: integer("step_index").notNull(),
+    completedAt: timestamp("completed_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.userId, t.pathSlug, t.stepIndex] }),
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// Vault entries (Sahay zero-knowledge mode).
+//
+// We store ciphertext + iv + salt + a label. The decryption key never leaves
+// the user's device (PBKDF2-derived from a passphrase). The server cannot read
+// these blobs and is not expected to. We keep them indexed by user so the
+// "Forget me" flow can hard-delete them.
+// ---------------------------------------------------------------------------
+
+export const vaultEntries = pgTable(
+  "vault_entries",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    label: varchar("label", { length: 80 }).notNull(),
+    ciphertext: text("ciphertext").notNull(), // base64
+    iv: text("iv").notNull(), // base64
+    salt: text("salt").notNull(), // base64
+    kdfIterations: integer("kdf_iterations").notNull().default(310_000),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    byUser: index("vault_entries_user_idx").on(t.userId, t.createdAt),
+  }),
+);

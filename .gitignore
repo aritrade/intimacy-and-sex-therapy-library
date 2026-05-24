@@ -1,0 +1,35 @@
+node_modules
+.next
+.env
+.env.local
+.env*.local
+*.log
+.DS_Store
+.vercel
+.turbo
+dist
+coverage
+.pnpm-store
+eval-reports/
+public/renders/
+
+# TypeScript incremental build cache
+*.tsbuildinfo
+
+# Short-form video factory render output (can be large)
+social/exports/
+out/
+
+# Local agent / IDE scratch
+.cursor/
+.idea/
+.vscode/
+
+# Playwright + vitest artifacts
+/test-results/
+/playwright-report/
+/playwright/.cache/
+/coverage/
+
+# Lighthouse CI
+/.lighthouseci/
