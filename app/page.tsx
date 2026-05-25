@@ -94,47 +94,57 @@ function Hero({ hasVideos }: { hasVideos: boolean }) {
         className="pointer-events-none absolute -top-32 -right-20 h-96 w-96 rounded-full bg-plum/10 blur-3xl animate-float"
       />
       <div className="container-page relative pt-14 pb-16 sm:pt-20 sm:pb-24">
-        <div className="max-w-3xl animate-fade-up">
-          <p className="pill-accent w-fit">
-            <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-accent" />
-            Curated · Clinician-reviewed · India-aware
-          </p>
-          <h1 className="mt-5 font-serif text-4xl sm:text-6xl text-ink-900 leading-[1.02] tracking-tight">
-            Honest help for{" "}
-            <span className="text-gradient">intimacy, desire, and relationships</span>.
-          </h1>
-          <p className="mt-5 max-w-prose text-lg text-ink-600">
-            A library of sex-therapy education from AASECT, WPATH, WHO, NIH, peer-reviewed
-            journals and accredited universities — plus <strong>Sahay</strong>, an
-            India-aware companion designed with confidentiality and warmth in mind.
-          </p>
-          <div className="mt-7 flex flex-wrap items-center gap-3">
-            <Link href="/catalog" className="btn-primary">
-              Explore the catalog →
-            </Link>
-            {hasVideos && (
-              <a href="#videos" className="btn-secondary">
-                Watch a 5-minute primer
-              </a>
-            )}
-            <Link href="/companion" className="btn-ghost">
-              Talk to Sahay
-            </Link>
+        <div className="grid gap-10 lg:grid-cols-[1.6fr_1fr] lg:items-start">
+          <div className="animate-fade-up">
+            <p className="pill-accent w-fit">
+              <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-accent" />
+              Curated · Clinician-reviewed · India-aware
+            </p>
+            <h1 className="mt-5 font-serif text-4xl sm:text-6xl text-ink-900 leading-[1.02] tracking-tight">
+              Honest help for{" "}
+              <span className="text-gradient">intimacy, desire, and relationships</span>.
+            </h1>
+            <p className="mt-5 max-w-prose text-lg text-ink-600">
+              A library of sex-therapy education from AASECT, WPATH, WHO, NIH, peer-reviewed
+              journals and accredited universities — plus <strong>Sahay</strong>, an
+              India-aware companion designed with confidentiality and warmth in mind.
+            </p>
+            <div className="mt-7 flex flex-wrap items-center gap-3">
+              <Link href="/catalog" className="btn-primary">
+                Explore the catalog →
+              </Link>
+              {hasVideos && (
+                <a href="#videos" className="btn-secondary">
+                  Watch a 5-minute primer
+                </a>
+              )}
+              <Link href="/companion" className="btn-ghost">
+                Talk to Sahay
+              </Link>
+            </div>
+            <ul className="mt-8 flex flex-wrap items-center gap-2 text-xs text-ink-400">
+              <li className="pill">
+                <span aria-hidden>♡</span> 18+ · educational only
+              </li>
+              <li className="pill">
+                <span aria-hidden>⌘</span> No tracking cookies
+              </li>
+              <li className="pill">
+                <span aria-hidden>✱</span> Encryption by default
+              </li>
+              <li className="pill">
+                <span aria-hidden>⚐</span> India-first crisis routing
+              </li>
+            </ul>
           </div>
-          <ul className="mt-8 flex flex-wrap items-center gap-2 text-xs text-ink-400">
-            <li className="pill">
-              <span aria-hidden>♡</span> 18+ · educational only
-            </li>
-            <li className="pill">
-              <span aria-hidden>⌘</span> No tracking cookies
-            </li>
-            <li className="pill">
-              <span aria-hidden>✱</span> Encryption by default
-            </li>
-            <li className="pill">
-              <span aria-hidden>⚐</span> India-first crisis routing
-            </li>
-          </ul>
+
+          <aside className="animate-fade-up lg:pt-2" aria-label="Newsletter signup">
+            <EmailSignup
+              variant="card"
+              title="Get the weekly digest"
+              blurb="One short email a week — new explainers, plain-language summaries, and crisis-resource updates. Unsubscribe anytime."
+            />
+          </aside>
         </div>
       </div>
     </section>
