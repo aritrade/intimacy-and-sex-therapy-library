@@ -29,9 +29,10 @@ export async function GET() {
 const PostBody = z.object({
   brief: z.string().min(8).max(2000),
   language: z.enum(["en", "hi", "hinglish"]).default("en"),
-  durationSeconds: z.union([z.literal(30), z.literal(60), z.literal(90)]).default(60),
+  durationSeconds: z.number().int().min(15).max(600).default(60),
   resourceId: z.string().uuid().optional(),
-  kind: z.enum(["reel", "short", "feed"]).default("reel"),
+  kind: z.enum(["reel", "short", "feed", "carousel", "long_form"]).default("reel"),
+  style: z.enum(["typography", "stock", "carousel", "long_form_essay"]).optional(),
 });
 
 export async function POST(req: Request) {
@@ -46,7 +47,10 @@ export async function POST(req: Request) {
   if (!parsed.success) {
     return NextResponse.json({ error: "invalid_body", issues: parsed.error.issues }, { status: 400 });
   }
-  const { brief, language, durationSeconds, resourceId, kind } = parsed.data;
+  const { brief, language, durationSeconds, resourceId, kind, style } = parsed.data;
+  const inferredStyle =
+    style ??
+    (kind === "carousel" ? "carousel" : kind === "long_form" ? "long_form_essay" : "typography");
 
   // Optionally pull the source resource for citation
   let resource:
@@ -76,7 +80,7 @@ export async function POST(req: Request) {
 
   let script;
   try {
-    script = await generateScript({ brief, language, durationSeconds, resource });
+    script = await generateScript({ brief, language, durationSeconds, resource, style: inferredStyle });
   } catch (e) {
     if (e instanceof ScriptRefusal) {
       return NextResponse.json({ error: "refusal", reason: e.reason }, { status: 422 });

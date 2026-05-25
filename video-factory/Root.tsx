@@ -1,5 +1,8 @@
 import { Composition } from "remotion";
 import { ShortFormVideo, type ShortFormProps } from "./ShortFormVideo";
+import { StockReel, type StockReelProps } from "./StockReel";
+import { LongFormEssay, type LongFormEssayProps } from "./LongFormEssay";
+import { QuoteCarousel, type QuoteCarouselProps } from "./QuoteCarousel";
 
 const FPS = 30;
 
@@ -18,6 +21,32 @@ const sample: ShortFormProps = {
   totalSeconds: 18,
 };
 
+const sampleStock: StockReelProps = {
+  ...sample,
+  scenes: sample.scenes.map((s) => ({ ...s, clips: [] })),
+};
+
+const sampleLong: LongFormEssayProps = {
+  ...sample,
+  totalSeconds: 240,
+  scenes: sample.scenes.map((s) => ({
+    title: "Chapter",
+    text: s.text,
+    seconds: s.seconds * 12,
+    clips: [],
+  })),
+};
+
+const sampleCarousel: QuoteCarouselProps = {
+  hook: sample.hook,
+  scenes: sample.scenes.map((s) => ({ text: s.text, attribution: null })),
+  cta: sample.cta,
+  citationLine: sample.citationLine,
+  language: sample.language,
+  voiceoverUrl: null,
+  totalSeconds: 6,
+};
+
 /**
  * Remotion entry. The render CLI (lib/social/render.ts) constructs the bundle
  * from this file and overrides `defaultProps` per draft.
@@ -25,6 +54,7 @@ const sample: ShortFormProps = {
 export const RemotionRoot: React.FC = () => {
   return (
     <>
+      {/* 9:16 typography reel — the original, mood-only template. */}
       <Composition
         id="ShortFormVideo"
         component={ShortFormVideo}
@@ -35,6 +65,48 @@ export const RemotionRoot: React.FC = () => {
         defaultProps={sample}
         calculateMetadata={({ props }) => ({
           durationInFrames: Math.ceil(props.totalSeconds * FPS),
+        })}
+      />
+
+      {/* 9:16 stock-footage reel — captions over Pexels/Pixabay clips. */}
+      <Composition
+        id="StockReel"
+        component={StockReel}
+        durationInFrames={Math.ceil(sampleStock.totalSeconds * FPS)}
+        fps={FPS}
+        width={1080}
+        height={1920}
+        defaultProps={sampleStock}
+        calculateMetadata={({ props }) => ({
+          durationInFrames: Math.ceil(props.totalSeconds * FPS),
+        })}
+      />
+
+      {/* 16:9 long-form essay — for YouTube. */}
+      <Composition
+        id="LongFormEssay"
+        component={LongFormEssay}
+        durationInFrames={Math.ceil(sampleLong.totalSeconds * FPS)}
+        fps={FPS}
+        width={1920}
+        height={1080}
+        defaultProps={sampleLong}
+        calculateMetadata={({ props }) => ({
+          durationInFrames: Math.ceil(props.totalSeconds * FPS),
+        })}
+      />
+
+      {/* 1080x1080 carousel — render slides as PNG stills. */}
+      <Composition
+        id="QuoteCarousel"
+        component={QuoteCarousel}
+        durationInFrames={Math.ceil(sampleCarousel.totalSeconds * FPS)}
+        fps={FPS}
+        width={1080}
+        height={1080}
+        defaultProps={sampleCarousel}
+        calculateMetadata={({ props }) => ({
+          durationInFrames: Math.ceil((props.scenes.length + 2) * FPS),
         })}
       />
     </>

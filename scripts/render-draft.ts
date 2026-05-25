@@ -74,7 +74,7 @@ function parseScriptMd(md: string): GeneratedScript {
   const citationLine = get("Citation") || null;
   const hashtags = get("Hashtags").split(/\s+/).filter(Boolean);
   const durationStr = get("Duration").replace(/s$/, "");
-  const duration = (Number(durationStr) || 60) as 30 | 60 | 90;
+  const duration = Number(durationStr) || 60;
   const body = get("Body")
     .split(/\n/)
     .map((line) => {

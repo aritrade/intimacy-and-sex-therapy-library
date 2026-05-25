@@ -4,6 +4,7 @@ import { AgeGateWithReload } from "@/components/AgeGateWithReload";
 import { ContinueReadingShelf } from "@/components/ContinueReadingShelf";
 import { IntakeQuiz } from "@/components/IntakeQuiz";
 import { VideoShelf } from "@/components/VideoShelf";
+import { EmailSignup } from "@/components/EmailSignup";
 import { listFeaturedVideos } from "@/lib/db/queries";
 import { currentStrings } from "@/lib/i18n/server";
 
@@ -30,6 +31,7 @@ export default async function HomePage() {
       <Surfaces />
       <Topics />
       <Trust />
+      <EmailSection />
     </>
   );
 }
@@ -54,10 +56,29 @@ function Welcome() {
           libraries.
         </p>
       </section>
-      <div className="animate-fade-up">
+      <div className="animate-fade-up space-y-4">
         <AgeGateWithReload />
+        <EmailSignup
+          variant="card"
+          title="Or get a weekly digest"
+          blurb="Plain-language explainers, new resources, and crisis-line updates — one short email a week."
+        />
       </div>
     </div>
+  );
+}
+
+function EmailSection() {
+  return (
+    <section className="container-page py-12">
+      <div className="mx-auto max-w-2xl">
+        <EmailSignup
+          variant="card"
+          title="Stay in the loop"
+          blurb="One short email a week — new explainers, plain-language summaries, and crisis-resource updates. Unsubscribe anytime."
+        />
+      </div>
+    </section>
   );
 }
 

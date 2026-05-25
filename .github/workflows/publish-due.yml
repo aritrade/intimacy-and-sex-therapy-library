@@ -1,0 +1,56 @@
+# Hourly publish-when-due trigger.
+#
+# Why GitHub Actions (and not a Vercel cron):
+#   - Vercel's hobby plan caps at 1 cron/day — we already use ours for
+#     daily-generate. GH Actions' free tier gives 2,000 minutes/month
+#     of which an hourly curl uses well under 50.
+#   - GH Actions can keep working when we eventually move publish off
+#     Vercel (e.g. to a beefier render box).
+#
+# This workflow does NOT publish anything itself — it just pings our
+# Vercel cron endpoint. The actual publishing logic, gates, and audit
+# logging live in app/api/cron/publish-due/route.ts.
+#
+# Required secrets:
+#   - VERCEL_DEPLOY_URL  e.g. https://intimacy-and-sex-therapy-library.vercel.app
+#   - CRON_SECRET        the same secret you set on the Vercel project
+
+name: publish-due
+
+on:
+  schedule:
+    # Every hour, at :07 (avoiding the top-of-hour cron herd).
+    - cron: "7 * * * *"
+  workflow_dispatch:
+    # Lets operators trigger it manually from the Actions tab.
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Curl /api/cron/publish-due
+        env:
+          DEPLOY_URL: ${{ secrets.VERCEL_DEPLOY_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$DEPLOY_URL" ] || [ -z "$CRON_SECRET" ]; then
+            echo "Missing secrets VERCEL_DEPLOY_URL or CRON_SECRET — skipping."
+            exit 0
+          fi
+
+          response=$(curl -sS -w "\n%{http_code}" \
+            -X POST "$DEPLOY_URL/api/cron/publish-due" \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            -H "Content-Type: application/json" \
+            -d '{}')
+          body=$(echo "$response" | head -n -1)
+          http=$(echo "$response" | tail -n 1)
+
+          echo "HTTP $http"
+          echo "$body"
+
+          if [ "$http" -ne 200 ] && [ "$http" -ne 503 ]; then
+            echo "::error ::publish-due endpoint returned $http"
+            exit 1
+          fi

@@ -46,10 +46,13 @@ export type InstagramPublishResult = {
 const GRAPH_VERSION = "v22.0";
 
 export async function publishInstagramReel(input: InstagramPublishInput): Promise<InstagramPublishResult> {
-  const igUserId = process.env.IG_USER_ID;
-  const accessToken = process.env.IG_ACCESS_TOKEN;
+  const igUserId = process.env.INSTAGRAM_BUSINESS_ACCOUNT_ID;
+  const accessToken = process.env.META_GRAPH_ACCESS_TOKEN;
   if (!igUserId || !accessToken) {
-    throw new PublisherRefusal("missing_env", "IG_USER_ID / IG_ACCESS_TOKEN not set");
+    throw new PublisherRefusal(
+      "missing_env",
+      "INSTAGRAM_BUSINESS_ACCOUNT_ID / META_GRAPH_ACCESS_TOKEN not set",
+    );
   }
   if (!input.videoUrl.startsWith("https://")) {
     throw new PublisherRefusal(

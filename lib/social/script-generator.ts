@@ -1,12 +1,17 @@
 /**
- * Short-form script generator for Phase 6.
+ * Short-form script generator.
  *
- * Generates 30s / 60s / 90s scripts from a brief + (optional) source resource.
- * Uses Claude with a Zod-validated schema and explicit clinician-safe
- * constraints. The output is NEVER published directly — it always lands as a
- * draft in `content_drafts` (status="script_draft") for clinician review.
+ * Generates 30s / 60s / 90s short-form scripts AND (when style ===
+ * "long_form_essay") 3–8 minute YouTube essay scripts.
  *
- * Constraints enforced by the system prompt AND by post-generation checks:
+ * Provider: uses whichever LLM the platform has configured via
+ * `lib/ai/llm.ts`. In the free-tier deployment this is Groq with
+ * llama-3.3-70b. Falls back to Anthropic when present (paid tier).
+ *
+ * Output is NEVER published directly — it always lands as a draft in
+ * `content_drafts` (status="script_draft") for clinician review.
+ *
+ * Constraints enforced by the system prompt AND post-generation checks:
  *   - No medical dosing.
  *   - No diagnosis or pathologising.
  *   - Sex-positive, LGBTQ+ and asexual-affirming.
@@ -16,26 +21,36 @@
 
 import { generateObject } from "ai";
 import { z } from "zod";
-import { claudeModel, isAnthropicConfigured } from "@/lib/ai/anthropic";
+import { chatModel, isLlmConfigured } from "@/lib/ai/llm";
 import { REFUSAL_CATEGORIES, detectCrisis } from "@/lib/safety/guardrails";
+
+export type ScriptStyle =
+  /** 9:16 typography reel — original mood-only template. */
+  | "typography"
+  /** 9:16 reel with stock footage backdrops. */
+  | "stock"
+  /** 1080x1080 carousel — 5–10 quote slides for IG carousel posts. */
+  | "carousel"
+  /** 16:9 long-form YouTube essay (3–8 minutes). */
+  | "long_form_essay";
 
 export const ScriptSchema = z.object({
   hook: z.string().min(8).max(160).describe("First-line hook, max 160 chars."),
   body: z
     .array(
       z.object({
-        text: z.string().min(4).max(280),
-        seconds: z.number().min(2).max(20),
+        text: z.string().min(4).max(600),
+        seconds: z.number().min(2).max(60),
       }),
     )
     .min(2)
-    .max(8),
-  cta: z.string().min(8).max(180).describe("A non-pushy call-to-action."),
+    .max(20),
+  cta: z.string().min(8).max(220).describe("A non-pushy call-to-action."),
   caption: z.string().max(2200).describe("Caption for IG/YT description, with hashtags on a separate line."),
   hashtags: z.array(z.string().regex(/^#[\p{L}\p{N}_]{2,40}$/u)).min(3).max(15),
   warning: z.string().nullable().describe("Optional safety warning (e.g., crisis resource line)."),
   citationLine: z.string().nullable().describe("If a source was provided, the citation line displayed on screen."),
-  durationSeconds: z.union([z.literal(30), z.literal(60), z.literal(90)]),
+  durationSeconds: z.number().min(15).max(600),
 });
 
 export type GeneratedScript = z.infer<typeof ScriptSchema>;
@@ -43,7 +58,8 @@ export type GeneratedScript = z.infer<typeof ScriptSchema>;
 export type ScriptInput = {
   brief: string;
   language: "en" | "hi" | "hinglish";
-  durationSeconds: 30 | 60 | 90;
+  durationSeconds: number;
+  style?: ScriptStyle;
   resource?: { title: string; authors?: string[]; year?: number; sourceName: string; url: string };
 };
 
@@ -53,11 +69,22 @@ export class ScriptRefusal extends Error {
   }
 }
 
+const STYLE_GUIDANCE: Record<ScriptStyle, string> = {
+  typography: `Style: 9:16 typography reel. Each scene's "text" appears on screen AND is voiced over. Keep each scene under ~12 spoken words per second of screen time. Build 3–6 scenes that sum to roughly the target duration.`,
+
+  stock: `Style: 9:16 stock-footage reel. Each scene's "text" is a single short sentence (≤14 words) overlaid on a B-roll clip. Lead each scene with a concrete, evocative image — the keyword extractor needs at least one strong noun per scene to find good footage (e.g. "morning light through curtains", "two cups of tea", "rain on window"). Build 3–6 scenes.`,
+
+  carousel: `Style: square carousel post (5–10 slides). Each "scene" is one slide. Slides are READ — not voiced. Make each slide stand alone: a complete thought in 1–2 sentences, max ~28 words. Slide 1 (hook) sets up the question. Final slide (cta) tells the reader what to do next. Use "seconds: 2" for every slide; the renderer ignores duration for carousels.`,
+
+  long_form_essay: `Style: 16:9 long-form YouTube essay, 3–8 minutes. Build 6–12 chapters. Each chapter's "text" is a short paragraph (40–90 words) of narration. The first sentence of each chapter must work as an on-screen lower-third caption (≤14 words). Chapters can quote the source resource when one is provided. Reading speed budget: ~150 words/minute, so a 5-minute essay is ~750 words total across all chapter "text" fields combined.`,
+};
+
 export async function generateScript(input: ScriptInput): Promise<GeneratedScript> {
-  if (!isAnthropicConfigured()) throw new ScriptRefusal("not_configured");
+  if (!isLlmConfigured()) throw new ScriptRefusal("not_configured");
   if (detectCrisis(input.brief).length > 0) throw new ScriptRefusal("crisis_signal");
 
   const refusalList = REFUSAL_CATEGORIES.map((c) => `- ${c.replace(/_/g, " ")}`).join("\n");
+  const style = input.style ?? "typography";
 
   const langInstruction =
     input.language === "en"
@@ -71,14 +98,13 @@ export async function generateScript(input: ScriptInput): Promise<GeneratedScrip
     : "\nNo source supplied. Use only the most consensus-evidenced claims; if uncertain, return a refusal-style hook instead.";
 
   const targetSeconds = input.durationSeconds;
-  const expectedScenes = targetSeconds === 30 ? "3 to 4" : targetSeconds === 60 ? "4 to 6" : "6 to 8";
 
-  const system = `You are a clinician-safe short-form scriptwriter for a sex-therapy education library. Your output is NEVER published directly — it goes through clinician + editor review first.
+  const system = `You are a clinician-safe ${style === "long_form_essay" ? "long-form essayist" : "short-form scriptwriter"} for a sex-therapy education library. Your output is NEVER published directly — it goes through clinician + editor review first.
 
 HARD CONSTRAINTS
 - ${langInstruction}
-- Target duration: ${targetSeconds} seconds. Build ${expectedScenes} scenes that sum to roughly ${targetSeconds}s (allow ±3s).
-- Each scene's "text" is what appears on screen AND is voiced over. Keep each scene's "text" under 12 spoken words per second of screen time.
+- Target duration: ${targetSeconds} seconds (allow ±10%).
+- ${STYLE_GUIDANCE[style]}
 - LGBTQ+ and asexual-affirming. Gender-neutral by default unless the brief explicitly references a gender.
 - Sex-positive. Never pathologise. Never moralise.
 - No medical dosing. Ever.
@@ -97,7 +123,7 @@ ${input.resource
   const prompt = `BRIEF:\n${input.brief}\n${sourceHint}\nReturn JSON matching the schema. Keep all language clear, warm, and judgment-free.`;
 
   const { object } = await generateObject({
-    model: claudeModel(),
+    model: chatModel(),
     system,
     prompt,
     schema: ScriptSchema,

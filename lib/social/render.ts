@@ -22,12 +22,20 @@ import { bundle } from "@remotion/bundler";
 import { renderMedia, selectComposition } from "@remotion/renderer";
 import { synthesize, type TTSResult } from "./tts";
 import { transcribe, wordsToSrt, drift } from "./stt";
+import { scriptToSrt } from "./stt-local";
+import { uploadRenderArtifact } from "./blob-host";
+import { pickClipsForScript } from "./stock-clips";
 import type { GeneratedScript } from "./script-generator";
 
 export type RenderInput = {
   draftId: string;
   script: GeneratedScript;
   language: "en" | "hi" | "hinglish";
+  /**
+   * Visual style. Defaults to "typography" (the existing comp). Other
+   * styles are rendered by separate Remotion compositions.
+   */
+  style?: "typography" | "stock" | "long_form_essay";
 };
 
 export type RenderResult = {
@@ -38,12 +46,20 @@ export type RenderResult = {
   captionsSrt: string | null;
   drift: number | null;
   totalSeconds: number;
+  blobHost: "vercel-blob" | "local";
 };
 
 const FPS = 30;
 
+const COMPOSITION_BY_STYLE: Record<NonNullable<RenderInput["style"]>, string> = {
+  typography: "ShortFormVideo",
+  stock: "StockReel",
+  long_form_essay: "LongFormEssay",
+};
+
 export async function renderDraft(input: RenderInput): Promise<RenderResult> {
   const { draftId, script, language } = input;
+  const style = input.style ?? "typography";
   const renderDir = join(process.cwd(), "public", "renders", draftId);
   await mkdir(renderDir, { recursive: true });
 
@@ -84,10 +100,37 @@ export async function renderDraft(input: RenderInput): Promise<RenderResult> {
   // exposed back to callers for caption playback in the admin UI.
   const renderVoiceoverUrl = voiceoverPath ? `file://${voiceoverPath}` : null;
 
-  // 3) Pick the composition + override props
+  // 3) For stock / long-form styles, fetch B-roll clips per scene.
+  //    Skipped (and the comp falls back to gradient orbs) when no
+  //    Pexels/Pixabay key is configured.
+  let scenesWithClips: Array<{ text: string; seconds: number; title?: string; clips: { url: string; attribution: string | null; width: number; height: number }[] }> = script.body.map((b) => ({
+    text: b.text,
+    seconds: b.seconds,
+    clips: [],
+  }));
+  if (style === "stock" || style === "long_form_essay") {
+    try {
+      const perSceneClips = await pickClipsForScript(script);
+      scenesWithClips = script.body.map((b, i) => ({
+        text: b.text,
+        seconds: b.seconds,
+        title: extractFirstNoun(b.text),
+        clips: (perSceneClips[i] ?? []).map((c) => ({
+          url: c.url,
+          attribution: c.attribution,
+          width: c.width,
+          height: c.height,
+        })),
+      }));
+    } catch (e) {
+      console.warn("[render] stock-clip fetch failed:", (e as Error).message);
+    }
+  }
+
+  // 4) Pick the composition + override props
   const compositionInputProps = {
     hook: script.hook,
-    scenes: script.body,
+    scenes: scenesWithClips,
     cta: script.cta,
     citationLine: script.citationLine,
     language,
@@ -97,7 +140,7 @@ export async function renderDraft(input: RenderInput): Promise<RenderResult> {
 
   const composition = await selectComposition({
     serveUrl: bundleLocation,
-    id: "ShortFormVideo",
+    id: COMPOSITION_BY_STYLE[style],
     inputProps: compositionInputProps,
   });
 
@@ -113,7 +156,10 @@ export async function renderDraft(input: RenderInput): Promise<RenderResult> {
       process.stdout.write(`\r[render] rendering ${(progress * 100).toFixed(0)}%   `),
   });
 
-  // 4) Whisper drift check + SRT
+  // 4) Captions: prefer Whisper word-timestamps when OPENAI_API_KEY is
+  //    set (catches TTS pronunciation errors); otherwise synthesise SRT
+  //    from the script directly. Edge TTS is deterministic, so the
+  //    synthetic path is correct for the free-tier flow.
   let captionsSrt: string | null = null;
   let driftScore: number | null = null;
   if (tts) {
@@ -127,18 +173,70 @@ export async function renderDraft(input: RenderInput): Promise<RenderResult> {
       console.warn("[render] Whisper failed:", (e as Error).message);
     }
   }
+  if (!captionsSrt) {
+    captionsSrt = scriptToSrt(fullText, totalSeconds);
+  }
+
+  // 5) Hoist artifacts to a publicly fetchable HTTPS URL so platform
+  //    publishers can pull them. Falls back to the local public path
+  //    when BLOB_READ_WRITE_TOKEN is unset (publishers will refuse).
+  const videoBlob = await uploadRenderArtifact(videoPath, draftId, "video.mp4").catch(
+    (e) => {
+      console.warn("[render] blob upload (video) failed:", (e as Error).message);
+      return null;
+    },
+  );
+  let voiceoverBlobUrl: string | null = publicVoiceoverUrl;
+  if (voiceoverPath) {
+    const r = await uploadRenderArtifact(voiceoverPath, draftId).catch((e) => {
+      console.warn("[render] blob upload (voiceover) failed:", (e as Error).message);
+      return null;
+    });
+    if (r) voiceoverBlobUrl = r.url;
+  }
 
   return {
     videoPath,
-    publicVideoUrl: `/renders/${draftId}/video.mp4`,
+    publicVideoUrl: videoBlob?.url ?? `/renders/${draftId}/video.mp4`,
     voiceoverPath,
-    publicVoiceoverUrl,
+    publicVoiceoverUrl: voiceoverBlobUrl,
     captionsSrt,
     drift: driftScore,
     totalSeconds,
+    blobHost: videoBlob?.hosted ?? "local",
   };
 }
 
 export function rendersDirExists(): boolean {
   return existsSync(join(process.cwd(), "public", "renders"));
+}
+
+/**
+ * Cheap chapter-title extractor for the LongFormEssay template — picks
+ * the first 2-3 word noun phrase from a scene's text. We just take the
+ * first non-stopword run; not perfect, but better than empty strings.
+ */
+function extractFirstNoun(text: string): string {
+  const stop = new Set([
+    "the", "a", "an", "and", "or", "but", "if", "is", "are", "was", "were",
+    "be", "to", "of", "in", "on", "at", "for", "with", "by", "from", "this",
+    "that", "these", "those", "your", "their", "our", "my", "his", "her",
+    "what", "which", "who", "when", "where", "why", "how", "you", "we",
+    "they", "i", "it", "as", "into", "than", "then", "so", "such",
+  ]);
+  const words = text
+    .split(/\s+/)
+    .map((w) => w.replace(/[^A-Za-z'-]/g, ""))
+    .filter(Boolean);
+  const out: string[] = [];
+  for (const w of words) {
+    if (out.length >= 3) break;
+    if (out.length === 0 && stop.has(w.toLowerCase())) continue;
+    out.push(w);
+    if (out.length >= 2 && /[.?!,:;]/.test(text.split(w)[1] ?? "")) break;
+  }
+  if (out.length === 0) return "Chapter";
+  return out
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join(" ");
 }

@@ -8,19 +8,22 @@
  *   part 1: application/json metadata (snippet + status)
  *   part 2: video/* binary
  *
- * Auth: OAuth 2 access token (YT_OAUTH_ACCESS_TOKEN). Refresh-token flow lives
- * in the wrapper — for v1 we expect operators to paste a fresh access token,
- * since auto-refresh is a moving target with Google Identity changes.
+ * Auth: OAuth 2 installed-app refresh-token flow. Operators provision
+ * `YOUTUBE_CLIENT_ID`, `YOUTUBE_CLIENT_SECRET`, and `YOUTUBE_REFRESH_TOKEN`
+ * once. The publisher exchanges the refresh token for a fresh access token
+ * on every upload via `getYouTubeAccessToken` (cached in-memory between
+ * calls within a process).
  *
  * Same hard rule as the IG publisher: refuses without env and refuses without
  * the upstream caller's guardrails.
  */
 
 import { readFile } from "node:fs/promises";
+import { getYouTubeAccessToken, YouTubeOAuthRefusal } from "./youtube-oauth";
 
 export class YouTubePublisherRefusal extends Error {
   constructor(
-    public reason: "missing_env" | "missing_file" | "upload_failed",
+    public reason: "missing_env" | "missing_file" | "upload_failed" | "auth_failed",
     public detail?: string,
   ) {
     super(`${reason}${detail ? `: ${detail}` : ""}`);
@@ -42,9 +45,17 @@ export type YouTubeUploadResult = {
 };
 
 export async function uploadYouTubeShort(input: YouTubeUploadInput): Promise<YouTubeUploadResult> {
-  const token = process.env.YT_OAUTH_ACCESS_TOKEN;
-  if (!token) {
-    throw new YouTubePublisherRefusal("missing_env", "YT_OAUTH_ACCESS_TOKEN not set");
+  let token: string;
+  try {
+    token = await getYouTubeAccessToken();
+  } catch (e) {
+    if (e instanceof YouTubeOAuthRefusal) {
+      throw new YouTubePublisherRefusal(
+        e.reason === "missing_env" ? "missing_env" : "auth_failed",
+        e.detail,
+      );
+    }
+    throw new YouTubePublisherRefusal("auth_failed", String((e as Error).message));
   }
   const file = await readFile(input.videoPath).catch(() => null);
   if (!file) throw new YouTubePublisherRefusal("missing_file", input.videoPath);

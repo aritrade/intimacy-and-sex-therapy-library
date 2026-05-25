@@ -1,17 +1,25 @@
 /**
  * Text-to-speech adapters.
  *
- * Two providers, picked by language:
- *   - Hindi / Hinglish / Indic scripts → Sarvam AI (https://api.sarvam.ai)
- *   - English → ElevenLabs (https://api.elevenlabs.io) [Cartesia is a drop-in
- *     alternative; flip ELEVENLABS_API_URL]
+ * Provider selection (in order, first one that works wins):
+ *   1. Microsoft Edge TTS — free, no key, neural voices for en-US,
+ *      en-IN, hi-IN. Default for every locale.
+ *   2. Sarvam AI — paid Hindi / Indic TTS. Used only for hi/hinglish
+ *      when SARVAM_API_KEY is set AND TTS_PROVIDER=sarvam.
+ *   3. ElevenLabs — paid English TTS. Used only when ELEVENLABS_API_KEY
+ *      is set AND TTS_PROVIDER=elevenlabs.
  *
- * Returns a Buffer of MP3 audio. Callers (lib/social/render.ts) write this
- * to disk before passing to Remotion.
+ * Override the default by setting `TTS_PROVIDER` to `edge | sarvam |
+ * elevenlabs` in env. Default is `edge` (free).
  *
- * If the relevant API key is unset, returns null — the render pipeline will
- * fall back to silent audio so the rest of the pipeline still type-checks.
+ * Returns a Buffer of audio bytes. Callers (lib/social/render.ts) write
+ * this to disk before passing to Remotion.
+ *
+ * If every adapter fails or returns null, the render pipeline falls back
+ * to a silent track so the rest of the pipeline still type-checks.
  */
+
+import { synthesizeEdgeTTS } from "./tts-edge";
 
 export type TTSLocale = "en" | "hi" | "hinglish";
 
@@ -19,15 +27,37 @@ export type TTSResult = {
   audio: Buffer;
   mime: "audio/mpeg" | "audio/wav";
   durationSeconds: number;
-  provider: "sarvam" | "elevenlabs" | "stub";
+  provider: "edge" | "sarvam" | "elevenlabs" | "stub";
 };
 
 export async function synthesize(
   text: string,
   locale: TTSLocale,
 ): Promise<TTSResult | null> {
-  if (locale === "en") return synthesizeEnglish(text);
-  return synthesizeIndic(text, locale);
+  const provider = (process.env.TTS_PROVIDER ?? "edge").toLowerCase();
+
+  if (provider === "edge") {
+    try {
+      const r = await synthesizeEdgeTTS(text, locale);
+      if (r) return r;
+    } catch (e) {
+      console.warn("[tts] Edge TTS failed, falling back:", (e as Error).message);
+    }
+    // Edge failed — try paid providers as fallback if configured.
+    if (locale === "en" && process.env.ELEVENLABS_API_KEY) {
+      return synthesizeEnglish(text);
+    }
+    if ((locale === "hi" || locale === "hinglish") && process.env.SARVAM_API_KEY) {
+      return synthesizeIndic(text, locale);
+    }
+    return null;
+  }
+
+  if (provider === "sarvam") return synthesizeIndic(text, locale);
+  if (provider === "elevenlabs") return synthesizeEnglish(text);
+
+  // Unknown provider, default to free.
+  return synthesizeEdgeTTS(text, locale);
 }
 
 async function synthesizeIndic(text: string, locale: TTSLocale): Promise<TTSResult | null> {

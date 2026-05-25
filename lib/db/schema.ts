@@ -766,3 +766,68 @@ export const vaultEntries = pgTable(
     byUser: index("vault_entries_user_idx").on(t.userId, t.createdAt),
   }),
 );
+
+// ---------------------------------------------------------------------------
+// Daily content-sync agent: structured proposals.
+//
+// The agent (see /lib/sync/*.ts) runs at 03:00 IST and emits proposals
+// instead of mutating the catalog directly. A human approves or rejects
+// each one from /admin/proposals. Approved proposals are applied with
+// the same validation the rest of the catalog uses.
+//
+// `kind` discriminates the payload shape. Today:
+//   - "fix_url"          {resourceId, oldUrl, newUrl, evidence}
+//   - "needs_refresh"    {resourceId, reason: "stale" | "metadata_drift", details}
+//   - "new_resource"     {sourceSlug, externalUrl, title, kind, license, ...}
+//   - "remove_resource"  {resourceId, reason: "unreachable" | "deprecated" | "delisted"}
+//   - "metadata_drift"   {resourceId, field, current, suggested}
+// ---------------------------------------------------------------------------
+
+export const proposalStatus = pgEnum("proposal_status", [
+  "open",
+  "approved",
+  "rejected",
+  "applied",
+  "errored",
+]);
+
+export const proposalKind = pgEnum("proposal_kind", [
+  "fix_url",
+  "needs_refresh",
+  "new_resource",
+  "remove_resource",
+  "metadata_drift",
+]);
+
+export const resourceProposals = pgTable(
+  "resource_proposals",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    kind: proposalKind("kind").notNull(),
+    /** Hashed agent identifier — e.g. "agent:link-health". */
+    proposedBy: varchar("proposed_by", { length: 96 }).notNull(),
+    resourceId: uuid("resource_id").references(() => resources.id, { onDelete: "set null" }),
+    /** Free-form structured payload; shape depends on kind. */
+    payload: jsonb("payload").$type<Record<string, unknown>>().notNull(),
+    /** One-line summary surfaced in the admin list. */
+    summary: text("summary").notNull(),
+    /** Why the agent thinks this proposal is correct. */
+    evidence: jsonb("evidence").$type<Record<string, unknown>>().default(sql`'{}'::jsonb`),
+    /** 0–1 confidence score the agent assigns. Used for sorting. */
+    confidence: integer("confidence").notNull().default(50),
+    status: proposalStatus("status").notNull().default("open"),
+    /** Hashed actor that approved/rejected. */
+    decidedBy: varchar("decided_by", { length: 96 }),
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+    /** Optional reviewer note (scrubbed before insertion). */
+    decisionNotes: text("decision_notes"),
+    /** Result of the apply step (URL of new resource, error message, etc.). */
+    appliedResult: jsonb("applied_result").$type<Record<string, unknown>>(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    byStatus: index("resource_proposals_status_idx").on(t.status, t.createdAt),
+    byKind: index("resource_proposals_kind_idx").on(t.kind, t.status),
+    byResource: index("resource_proposals_resource_idx").on(t.resourceId),
+  }),
+);

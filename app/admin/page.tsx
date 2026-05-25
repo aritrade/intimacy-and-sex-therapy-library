@@ -277,11 +277,23 @@ export default async function AdminHome() {
 
       <section className="mt-10">
         <h2 className="font-serif text-xl text-ink-900 mb-3">Quick links</h2>
-        <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <Link href="/admin/queue" className="card card-hover p-5 block">
+            <h3 className="font-serif text-base text-ink-900">Today&apos;s queue</h3>
+            <p className="mt-2 text-sm text-ink-600">
+              Single-tap clinician → editor → publish lanes.
+            </p>
+          </Link>
           <Link href="/admin/drafts" className="card card-hover p-5 block">
-            <h3 className="font-serif text-base text-ink-900">Drafts queue</h3>
+            <h3 className="font-serif text-base text-ink-900">All drafts</h3>
             <p className="mt-2 text-sm text-ink-600">
               Generate, review, and publish short-form drafts.
+            </p>
+          </Link>
+          <Link href="/admin/proposals" className="card card-hover p-5 block">
+            <h3 className="font-serif text-base text-ink-900">Sync proposals</h3>
+            <p className="mt-2 text-sm text-ink-600">
+              Approve link-fix, freshness, and discovery suggestions.
             </p>
           </Link>
           <Link href="/admin/users" className="card card-hover p-5 block">

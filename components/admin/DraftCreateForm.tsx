@@ -7,7 +7,10 @@ export function DraftCreateForm() {
   const router = useRouter();
   const [brief, setBrief] = useState("");
   const [language, setLanguage] = useState<"en" | "hi" | "hinglish">("en");
-  const [duration, setDuration] = useState<30 | 60 | 90>(60);
+  const [duration, setDuration] = useState<number>(60);
+  const [style, setStyle] = useState<"typography" | "stock" | "carousel" | "long_form_essay">(
+    "typography",
+  );
   const [resourceId, setResourceId] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -17,6 +20,12 @@ export function DraftCreateForm() {
     setSubmitting(true);
     setError(null);
     try {
+      const kind =
+        style === "carousel"
+          ? "carousel"
+          : style === "long_form_essay"
+            ? "long_form"
+            : "reel";
       const res = await fetch("/api/admin/drafts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -25,6 +34,8 @@ export function DraftCreateForm() {
           language,
           durationSeconds: duration,
           resourceId: resourceId || undefined,
+          style,
+          kind,
         }),
       });
       const json = await res.json();
@@ -59,7 +70,7 @@ export function DraftCreateForm() {
         />
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field label="Language">
           <select value={language} onChange={(e) => setLanguage(e.target.value as typeof language)} className="select">
             <option value="en">English</option>
@@ -67,12 +78,27 @@ export function DraftCreateForm() {
             <option value="hinglish">Hinglish</option>
           </select>
         </Field>
-        <Field label="Duration">
-          <select value={duration} onChange={(e) => setDuration(Number(e.target.value) as typeof duration)} className="select">
-            <option value={30}>30s</option>
-            <option value={60}>60s</option>
-            <option value={90}>90s</option>
+        <Field label="Style">
+          <select value={style} onChange={(e) => setStyle(e.target.value as typeof style)} className="select">
+            <option value="typography">Typography reel (9:16)</option>
+            <option value="stock">Stock-footage reel (9:16)</option>
+            <option value="carousel">Carousel (1:1, 5–10 slides)</option>
+            <option value="long_form_essay">Long-form essay (16:9, 3–8 min)</option>
           </select>
+        </Field>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <Field label="Duration (s)">
+          <input
+            type="number"
+            min={15}
+            max={600}
+            step={15}
+            value={duration}
+            onChange={(e) => setDuration(Number(e.target.value) || 60)}
+            className="select"
+          />
         </Field>
         <Field label="Source resource id (optional)">
           <input
@@ -97,8 +123,9 @@ export function DraftCreateForm() {
         {submitting ? "Generating script…" : "Generate clinician-safe script"}
       </button>
       <p className="text-[11px] text-ink-400">
-        Generation runs through Claude with a clinician-safe system prompt. The result is
-        stored as <code>script_draft</code> — nothing is rendered or posted.
+        Generation uses the configured LLM (Groq Llama or Anthropic Claude) with a
+        clinician-safe system prompt. The result is stored as <code>script_draft</code> —
+        nothing is rendered or posted.
       </p>
 
       <style jsx>{`
