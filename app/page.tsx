@@ -31,7 +31,6 @@ export default async function HomePage() {
       <Surfaces />
       <Topics />
       <Trust />
-      <EmailSection />
     </>
   );
 }
@@ -65,20 +64,6 @@ function Welcome() {
         />
       </div>
     </div>
-  );
-}
-
-function EmailSection() {
-  return (
-    <section className="container-page py-12">
-      <div className="mx-auto max-w-2xl">
-        <EmailSignup
-          variant="card"
-          title="Stay in the loop"
-          blurb="One short email a week — new explainers, plain-language summaries, and crisis-resource updates. Unsubscribe anytime."
-        />
-      </div>
-    </section>
   );
 }
 
