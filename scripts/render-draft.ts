@@ -44,13 +44,26 @@ async function main() {
     language: draft.language as "en" | "hi" | "hinglish",
   });
 
+  // Status transition rules:
+  //   - script_draft / clinician_reviewed → rendered (normal v1 flow:
+  //     render happens between the two approval gates)
+  //   - rendered → rendered (re-render keeps status)
+  //   - editor_reviewed / scheduled / published → KEEP existing status
+  //     (re-rendering must not silently undo approvals or republish)
+  const preserveStatuses = new Set([
+    "editor_reviewed",
+    "scheduled",
+    "published",
+  ]);
+  const nextStatus = preserveStatuses.has(draft.status) ? draft.status : "rendered";
+
   await db
     .update(contentDrafts)
     .set({
       videoUrl: result.publicVideoUrl,
       voiceoverUrl: result.publicVoiceoverUrl,
       captionsSrt: result.captionsSrt,
-      status: "rendered",
+      status: nextStatus,
     })
     .where(eq(contentDrafts.id, draft.id));
 

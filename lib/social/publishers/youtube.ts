@@ -23,7 +23,13 @@ import { getYouTubeAccessToken, YouTubeOAuthRefusal } from "./youtube-oauth";
 
 export class YouTubePublisherRefusal extends Error {
   constructor(
-    public reason: "missing_env" | "missing_file" | "upload_failed" | "auth_failed",
+    public reason:
+      | "missing_env"
+      | "missing_file"
+      | "missing_source"
+      | "fetch_failed"
+      | "upload_failed"
+      | "auth_failed",
     public detail?: string,
   ) {
     super(`${reason}${detail ? `: ${detail}` : ""}`);
@@ -31,7 +37,14 @@ export class YouTubePublisherRefusal extends Error {
 }
 
 export type YouTubeUploadInput = {
-  videoPath: string;
+  /**
+   * Where to read the MP4 from. Provide either `videoUrl` (HTTPS, preferred —
+   * works from any runtime including Vercel serverless) or `videoPath`
+   * (local file, used when running the publisher from the dev CLI or from
+   * a render job on the same machine). If both are set, `videoUrl` wins.
+   */
+  videoUrl?: string;
+  videoPath?: string;
   title: string;
   description: string;
   tags?: string[];
@@ -57,8 +70,31 @@ export async function uploadYouTubeShort(input: YouTubeUploadInput): Promise<You
     }
     throw new YouTubePublisherRefusal("auth_failed", String((e as Error).message));
   }
-  const file = await readFile(input.videoPath).catch(() => null);
-  if (!file) throw new YouTubePublisherRefusal("missing_file", input.videoPath);
+  // Source priority: HTTPS URL (works everywhere) → local path (CLI only).
+  let file: Buffer | null = null;
+  if (input.videoUrl && input.videoUrl.startsWith("https://")) {
+    try {
+      const res = await fetch(input.videoUrl);
+      if (!res.ok) {
+        throw new YouTubePublisherRefusal(
+          "fetch_failed",
+          `GET ${input.videoUrl} → ${res.status} ${res.statusText}`,
+        );
+      }
+      file = Buffer.from(await res.arrayBuffer());
+    } catch (e) {
+      if (e instanceof YouTubePublisherRefusal) throw e;
+      throw new YouTubePublisherRefusal("fetch_failed", String((e as Error).message));
+    }
+  } else if (input.videoPath) {
+    file = await readFile(input.videoPath).catch(() => null);
+    if (!file) throw new YouTubePublisherRefusal("missing_file", input.videoPath);
+  } else {
+    throw new YouTubePublisherRefusal(
+      "missing_source",
+      "Provide either videoUrl (HTTPS) or videoPath (local).",
+    );
+  }
 
   const meta = {
     snippet: {

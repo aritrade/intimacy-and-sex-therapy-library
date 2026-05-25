@@ -88,9 +88,11 @@ export async function publishDraft(input: PublishInput): Promise<PublishResult> 
   }
   if (input.platforms.includes("youtube")) {
     try {
-      const localPath = `${process.cwd()}/public/renders/${draft.id}/video.mp4`;
+      // Prefer the HTTPS Blob URL so this works on Vercel (no local FS).
+      // CLI/dev callers can still pass a local path if they want.
       const r = await uploadYouTubeShort({
-        videoPath: localPath,
+        videoUrl: draft.videoUrl,
+        videoPath: `${process.cwd()}/public/renders/${draft.id}/video.mp4`,
         title: extractFirstLine(draft.scriptMd ?? "Untitled"),
         description: extractCaption(draft.scriptMd ?? ""),
       });

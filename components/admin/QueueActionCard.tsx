@@ -72,10 +72,26 @@ export function QueueActionCard({ lane, draft }: { lane: string; draft: Draft })
           body: JSON.stringify({ role: lane }),
         });
       }
-      const json = await res.json().catch(() => ({}));
+      const json = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        detail?: string;
+        failures?: Array<{ platform: string; reason: string; detail?: string }>;
+      };
       if (!res.ok) {
+        const platformDetail =
+          json.failures && json.failures.length > 0
+            ? json.failures
+                .map(
+                  (f) =>
+                    `${f.platform}: ${f.reason}${f.detail ? ` — ${f.detail}` : ""}`,
+                )
+                .join("; ")
+            : null;
         setError(
-          (json as { error?: string }).error ?? `${res.status} ${res.statusText}`,
+          platformDetail ??
+            json.detail ??
+            json.error ??
+            `${res.status} ${res.statusText}`,
         );
       } else {
         setDoneMessage(action.ok);

@@ -95,10 +95,34 @@ export async function renderDraft(input: RenderInput): Promise<RenderResult> {
     webpackOverride: (cfg) => cfg,
   });
 
-  // Remotion's headless Chromium can't resolve `/renders/...` (Next-style
-  // public paths). Use a file:// URL during render; the public URL is only
-  // exposed back to callers for caption playback in the admin UI.
-  const renderVoiceoverUrl = voiceoverPath ? `file://${voiceoverPath}` : null;
+  // Hoist the voiceover to a publicly-fetchable HTTPS URL BEFORE Remotion
+  // renders, because Remotion's asset downloader only handles http(s) —
+  // it can't read file:// URLs or Next-style /public paths.
+  //   - If BLOB_READ_WRITE_TOKEN is set, we upload to Vercel Blob and
+  //     pass the HTTPS URL into the composition.
+  //   - If Blob is unconfigured or upload fails, we render a silent
+  //     video (renderVoiceoverUrl = null). The comp falls back to no
+  //     <Audio>, which is the correct dev-mode behaviour.
+  let renderVoiceoverUrl: string | null = null;
+  if (voiceoverPath) {
+    try {
+      const ext = voiceoverPath.endsWith(".mp3") ? "mp3" : "wav";
+      const r = await uploadRenderArtifact(voiceoverPath, draftId, `voiceover.${ext}`);
+      if (r.hosted === "vercel-blob" && r.url.startsWith("https://")) {
+        renderVoiceoverUrl = r.url;
+        publicVoiceoverUrl = r.url;
+      } else {
+        console.warn(
+          "[render] voiceover not on HTTPS host (BLOB_READ_WRITE_TOKEN unset?); rendering silent video",
+        );
+      }
+    } catch (e) {
+      console.warn(
+        "[render] voiceover blob pre-upload failed; rendering silent video:",
+        (e as Error).message,
+      );
+    }
+  }
 
   // 3) For stock / long-form styles, fetch B-roll clips per scene.
   //    Skipped (and the comp falls back to gradient orbs) when no
@@ -177,29 +201,23 @@ export async function renderDraft(input: RenderInput): Promise<RenderResult> {
     captionsSrt = scriptToSrt(fullText, totalSeconds);
   }
 
-  // 5) Hoist artifacts to a publicly fetchable HTTPS URL so platform
-  //    publishers can pull them. Falls back to the local public path
-  //    when BLOB_READ_WRITE_TOKEN is unset (publishers will refuse).
+  // 5) Hoist the rendered MP4 to a publicly fetchable HTTPS URL so
+  //    platform publishers can pull it. Voiceover was already uploaded
+  //    pre-render (see above). Falls back to the local public path when
+  //    BLOB_READ_WRITE_TOKEN is unset; publishers will refuse this path
+  //    which is the correct "not configured" behaviour.
   const videoBlob = await uploadRenderArtifact(videoPath, draftId, "video.mp4").catch(
     (e) => {
       console.warn("[render] blob upload (video) failed:", (e as Error).message);
       return null;
     },
   );
-  let voiceoverBlobUrl: string | null = publicVoiceoverUrl;
-  if (voiceoverPath) {
-    const r = await uploadRenderArtifact(voiceoverPath, draftId).catch((e) => {
-      console.warn("[render] blob upload (voiceover) failed:", (e as Error).message);
-      return null;
-    });
-    if (r) voiceoverBlobUrl = r.url;
-  }
 
   return {
     videoPath,
     publicVideoUrl: videoBlob?.url ?? `/renders/${draftId}/video.mp4`,
     voiceoverPath,
-    publicVoiceoverUrl: voiceoverBlobUrl,
+    publicVoiceoverUrl,
     captionsSrt,
     drift: driftScore,
     totalSeconds,
