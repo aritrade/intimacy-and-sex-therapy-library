@@ -47,26 +47,61 @@ Recommended handle: `intimacysextherapylibrary` everywhere. Bio:
 
 ### 3. Provision YouTube OAuth refresh token
 
-1. Google Cloud Console → Create Project → Enable YouTube Data API v3.
-2. OAuth consent screen → Internal (or External + add yourself as a
-   test user).
-3. Credentials → Create OAuth client ID → "Desktop app".
-4. Run [oauth2l](https://github.com/google/oauth2l) once with the
-   downloaded `client_secret.json`:
+The path below uses the in-browser **OAuth 2.0 Playground** to mint
+the refresh token. No CLI install needed; takes ~12 minutes end-to-end.
 
-   ```bash
-   oauth2l fetch \
-     --type refresh \
-     --credentials client_secret.json \
-     --scope https://www.googleapis.com/auth/youtube.upload
-   ```
+**Prerequisite**: 2-Step Verification must be enabled on the Google
+account (Google enforces this on all Cloud projects as of
+Sept 12, 2025). Use a passkey or authenticator app, NOT SMS — see
+"YouTube account hardening" below.
 
-   Copy:
-   - `client_id` → `YOUTUBE_CLIENT_ID`
-   - `client_secret` → `YOUTUBE_CLIENT_SECRET`
-   - the printed refresh token → `YOUTUBE_REFRESH_TOKEN`
-5. Optional: also enable a separate API key (no scopes) for the
-   metrics poller → `YOUTUBE_API_KEY`.
+1. **Brand channel.** Create a YouTube Brand Channel (not your personal
+   channel) at <https://www.youtube.com/account_advanced>. Country = India.
+   Note the channel ID (`UC…`) — save it in your password manager as a
+   sanity-check value (you'll confirm OAuth grants this ID in step 6).
+2. **Google Cloud project.** <https://console.cloud.google.com/projectcreate>
+   → name it `intimacy-library` → switch into it.
+3. **Enable YouTube Data API v3.** Open
+   <https://console.cloud.google.com/apis/library/youtube.googleapis.com>
+   in the same project → **Enable**.
+4. **OAuth consent screen.** Open
+   <https://console.cloud.google.com/apis/credentials/consent>:
+   - User type: **External**
+   - App name: `Intimacy & Sex Therapy Library`
+   - Scopes: add `youtube.upload` + `youtube.readonly` (both sensitive)
+   - Test users: add the gmail that owns the brand channel
+   - Publishing status: **leave as Testing** (do NOT publish)
+5. **OAuth client ID.** <https://console.cloud.google.com/apis/credentials>
+   → Create Credentials → OAuth client ID:
+   - Application type: **Web application** (NOT Desktop)
+   - Name: `oauth-playground-bootstrap`
+   - Authorized redirect URI: `https://developers.google.com/oauthplayground`
+   - Copy the `Client ID` and `Client secret` from the modal.
+6. **Mint the refresh token** at <https://developers.google.com/oauthplayground>:
+   - Gear icon (top-right) → tick **Use your own OAuth credentials** →
+     paste the Client ID + Secret. Also tick **Force prompt: consent**
+     (this is what guarantees a `refresh_token` is returned).
+   - Left panel → **YouTube Data API v3** → tick both scopes →
+     **Authorize APIs**.
+   - On Google's consent screen: **Advanced → Go to … (unsafe)** past
+     the "unverified app" warning. When asked which channel to grant
+     to, pick the **Brand Channel**, not personal.
+   - Back in the Playground → **Exchange authorization code for tokens**.
+   - Copy the `refresh_token` (starts with `1//0g…`) → `YOUTUBE_REFRESH_TOKEN`.
+     The `access_token` is short-lived and not stored anywhere.
+7. **(Optional) API key for metrics poller.** Same Credentials page →
+   Create Credentials → API key → restrict to "YouTube Data API v3"
+   only → `YOUTUBE_API_KEY`. The metrics cron can also use the OAuth
+   token for reads, so this is skippable.
+
+> **Refresh-token lifetime trade-off.** Testing-mode refresh tokens
+> for sensitive scopes (`youtube.upload`) expire after **7 days**.
+> This is a Google policy, not a bug. The fix is either:
+>   1. Run the **Sunday refresh ritual** (see "Weekly ops" below) —
+>      90 seconds, no code changes.
+>   2. Push the OAuth app to "In production" via Google's verification
+>      flow (1–4 week review). Requires privacy policy + ToS pages on a
+>      verified domain plus an app demo video.
 
 ### 4. Provision Vercel Blob
 
@@ -145,7 +180,7 @@ META_GRAPH_ACCESS_TOKEN=<long-lived page token>
 # YouTube
 YOUTUBE_CLIENT_ID=<from step 3>
 YOUTUBE_CLIENT_SECRET=<from step 3>
-YOUTUBE_REFRESH_TOKEN=<from step 3>
+YOUTUBE_REFRESH_TOKEN=<from step 3 — refreshed weekly while in Testing mode>
 YOUTUBE_API_KEY=<optional, for metrics poller>
 
 # LinkedIn (optional)
@@ -287,13 +322,72 @@ Operator's daily ritual (5–10 minutes):
 
 ---
 
+## Weekly ops — Sunday YouTube refresh ritual (90 seconds)
+
+While the OAuth app is in **Testing** mode, Google revokes refresh
+tokens for sensitive scopes (`youtube.upload`) every 7 days. The cron
+will start returning `youtube: auth_failed` until you mint a fresh
+token. Do this every Sunday morning until you've completed Google
+verification:
+
+1. Open <https://developers.google.com/oauthplayground>.
+2. Gear icon → confirm **Use your own OAuth credentials** is still
+   ticked and the Client ID / Secret are present (the Playground
+   remembers them in your browser's localStorage). Confirm **Force
+   prompt: consent** is also ticked.
+3. Left panel → **YouTube Data API v3** → both scopes ticked →
+   **Authorize APIs**.
+4. Pick the brand-channel Gmail → past the "unverified" warning →
+   pick the **Brand Channel** → Continue → Continue.
+5. **Exchange authorization code for tokens** → copy the new
+   `refresh_token`.
+6. Vercel → Project → Settings → Environment Variables →
+   `YOUTUBE_REFRESH_TOKEN` → **Edit** → paste new value → **Save**.
+7. **Redeploy** (Deployments tab → latest deployment → ⋮ → Redeploy)
+   so the new env var reaches the running cron functions. Quick check:
+
+   ```bash
+   curl -X POST "$DEPLOY_URL/api/cron/publish-due" \
+     -H "Authorization: Bearer $CRON_SECRET" | jq '.youtube'
+   # expected: no "auth_failed" anywhere
+   ```
+
+When this becomes a chore you don't want to keep doing, file a 1-hour
+block to push the OAuth app to "In production" (privacy policy URL,
+ToS URL, app demo video, scope justification — see Google's
+[verification docs](https://support.google.com/cloud/answer/9110914)).
+
+---
+
+## YouTube account hardening (do this before going live)
+
+The Google account behind the YouTube channel is now a single point
+of failure for the whole stack — it owns the channel, holds the OAuth
+client, and is the recovery email for several other services. Lose it
+and you lose IG recovery, the cron's auth, and the brand channel.
+Protections (do all four, once):
+
+- **2-Step Verification on**, with **passkey + authenticator app**
+  enrolled. SMS only as last-resort fallback (SIM-swap risk).
+- **Backup codes** downloaded and stored in your password manager
+  under the `Intimacy Library — Google Account` entry.
+- **Recovery email + recovery phone** set to values you control and
+  that aren't easy to guess from public info.
+- **Test the recovery**: sign out, then sign in using a backup code,
+  once, so you know the flow works. Then re-enable normal 2SV. Most
+  people never test their backup codes until the day they need them
+  and discover they don't work.
+
+---
+
 ## Failure modes & fixes
 
 | Symptom                                              | Likely cause                                                | Fix                                                                                          |
 | ---------------------------------------------------- | ----------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
 | Publish returns `missing_https_video_url`            | `BLOB_READ_WRITE_TOKEN` missing or render fell back to local | Set blob token in Vercel env, redeploy, re-render the draft.                                 |
 | Publish returns `instagram: missing_env`             | IG creds not set or wrong names                             | Verify `INSTAGRAM_BUSINESS_ACCOUNT_ID` and `META_GRAPH_ACCESS_TOKEN` (NOT the older `IG_*`). |
-| Publish returns `youtube: auth_failed`               | OAuth refresh token expired or revoked                      | Re-run `oauth2l fetch` to get a new refresh token, redeploy.                                 |
+| Publish returns `youtube: auth_failed`               | Refresh token expired (Testing-mode 7-day window)           | Run the **Sunday refresh ritual** above. Most common cause when posting was working yesterday. |
+| Publish returns `youtube: auth_failed` (consistently) | OAuth client deleted, secret rotated, or scopes changed     | Re-do Hop 5 (new client + redirect URI) and Hop 6 of YouTube setup, redeploy.                  |
 | `daily-generate` returns `skipped: queue_full`       | >12 drafts stuck in `script_draft`                          | Triage `/admin/queue`. Approve, reject, or delete to free the queue.                         |
 | Many `transient` errors from link-health             | Network blip                                                | Re-run the cron in 30 minutes; the agent dedupes.                                            |
 | LinkedIn / Twitter fail silently in audit            | Cross-posters are best-effort                               | Check creds + scopes. Failures don't flip the draft to `failed`.                             |
