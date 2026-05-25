@@ -194,6 +194,23 @@ def cmd_render(args: argparse.Namespace) -> int:
     result_dir = out_dir / "sadtalker_out"
     result_dir.mkdir(parents=True, exist_ok=True)
 
+    # Why these flags (in priority order):
+    #   --preprocess crop   Face-only output. Roughly 4x faster than 'full'
+    #                       on CPU because the per-frame compositing skips
+    #                       background warping. The "late-night radio host
+    #                       close-up" framing also fits our persona better
+    #                       than a full-body wide shot, so this is a quality
+    #                       improvement, not just a perf shortcut.
+    #   (no --enhancer)     GFPGAN doubles per-frame compute for marginal
+    #                       sharpening that mostly washes out at the 1080×1920
+    #                       Reels resolution. Re-enable with "--enhancer gfpgan"
+    #                       once we move to a GPU runner or a paid tier.
+    #   --still             Reduces head-bob so the host sits steady in the
+    #                       composition like a real news/podcast frame.
+    #   --size 256          Inference resolution. SadTalker's facerender is
+    #                       quadratic in this number — 256 → ~5s/frame on CPU,
+    #                       512 → ~30s/frame. We upscale in Remotion anyway.
+    #   --cpu               GH Actions free runners have no GPU.
     cmd = [
         sys.executable,
         "inference.py",
@@ -201,12 +218,8 @@ def cmd_render(args: argparse.Namespace) -> int:
         "--source_image", str(portrait_path),
         "--result_dir", str(result_dir),
         "--still",
-        "--preprocess", "full",
-        "--enhancer", "gfpgan",
-        # --size 256 keeps inference fast (~6 min for 30s on CPU); 512
-        # roughly triples render time for a modest quality bump.
+        "--preprocess", "crop",
         "--size", "256",
-        # CPU only — the GH Actions runner has no GPU.
         "--cpu",
     ]
     log("running SadTalker:")

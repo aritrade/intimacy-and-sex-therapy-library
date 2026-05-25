@@ -65,7 +65,10 @@ jobs:
   render:
     name: SadTalker render
     runs-on: ubuntu-latest
-    timeout-minutes: 30 # generous; a 30s clip typically takes 5-8 min on CPU
+    # SadTalker on CPU is the slow part: a 12s clip with --preprocess crop +
+    # no enhancer is ~16 min; a 30s clip ~38 min. Budget extra to absorb
+    # variance from the shared-runner CPU.
+    timeout-minutes: 50
 
     steps:
       - name: Checkout (just the runner script + scripts/)
