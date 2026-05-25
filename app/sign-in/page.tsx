@@ -5,8 +5,8 @@ import { signIn } from "@/lib/auth/auth";
 export const metadata = { title: "Sign in · Intimacy & Sex Therapy Library" };
 export const dynamic = "force-dynamic";
 
-const hasGoogle = !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
-const hasEmail = !!(process.env.RESEND_API_KEY && process.env.EMAIL_FROM);
+const hasGoogle = !!(process.env.AUTH_GOOGLE_ID && process.env.AUTH_GOOGLE_SECRET);
+const hasEmail = !!(process.env.AUTH_RESEND_KEY && process.env.AUTH_RESEND_FROM);
 
 export default function SignInPage() {
   if (!isAuthAvailable) {
@@ -18,8 +18,8 @@ export default function SignInPage() {
             The site works fully without an account. To unlock saved
             assessments, learning-path progress, and the encrypted vault,
             an operator needs to configure either Google OAuth (
-            <code>GOOGLE_CLIENT_ID</code> + <code>GOOGLE_CLIENT_SECRET</code>) or Resend
-            magic links (<code>RESEND_API_KEY</code> + <code>EMAIL_FROM</code>), plus
+            <code>AUTH_GOOGLE_ID</code> + <code>AUTH_GOOGLE_SECRET</code>) or Resend
+            magic links (<code>AUTH_RESEND_KEY</code> + <code>AUTH_RESEND_FROM</code>), plus
             <code> AUTH_SECRET</code>.
           </p>
           <Link href="/" className="mt-4 inline-block btn-secondary">

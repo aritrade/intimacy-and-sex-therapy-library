@@ -12,21 +12,26 @@ import Resend from "next-auth/providers/resend";
 
 const providers: NextAuthConfig["providers"] = [];
 
-if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
+// Auth.js v5 standard env-var naming: AUTH_<PROVIDER>_ID / AUTH_<PROVIDER>_SECRET
+// for OAuth providers, AUTH_<PROVIDER>_KEY for email providers. Documented in
+// .env.example. Do NOT rename to GOOGLE_CLIENT_ID / RESEND_API_KEY — those are
+// the third-party SDK conventions and were the source of a real outage where
+// providers silently went missing on Vercel because the env names didn't match.
+if (process.env.AUTH_GOOGLE_ID && process.env.AUTH_GOOGLE_SECRET) {
   providers.push(
     Google({
-      clientId: process.env.GOOGLE_CLIENT_ID,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+      clientId: process.env.AUTH_GOOGLE_ID,
+      clientSecret: process.env.AUTH_GOOGLE_SECRET,
       authorization: { params: { scope: "openid email profile" } },
     }),
   );
 }
 
-if (process.env.RESEND_API_KEY && process.env.EMAIL_FROM) {
+if (process.env.AUTH_RESEND_KEY && process.env.AUTH_RESEND_FROM) {
   providers.push(
     Resend({
-      apiKey: process.env.RESEND_API_KEY,
-      from: process.env.EMAIL_FROM,
+      apiKey: process.env.AUTH_RESEND_KEY,
+      from: process.env.AUTH_RESEND_FROM,
     }),
   );
 }
