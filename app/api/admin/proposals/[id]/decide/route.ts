@@ -18,6 +18,7 @@ import { resourceProposals } from "@/lib/db/schema";
 import { applyProposal } from "@/lib/sync/apply-proposal";
 import { recordAudit } from "@/lib/observability/audit";
 import { getActor } from "@/lib/admin/actor";
+import { requireApiAdmin } from "@/lib/auth/api-admin-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -28,6 +29,8 @@ const Body = z.object({
 });
 
 export async function POST(req: Request, { params }: { params: { id: string } }) {
+  const guard = await requireApiAdmin();
+  if (guard instanceof NextResponse) return guard;
   if (!process.env.DATABASE_URL) {
     return NextResponse.json({ error: "db_not_configured" }, { status: 503 });
   }

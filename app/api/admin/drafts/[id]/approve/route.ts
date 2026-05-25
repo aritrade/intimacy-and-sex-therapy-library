@@ -5,6 +5,7 @@ import { db } from "@/lib/db/client";
 import { contentDrafts } from "@/lib/db/schema";
 import { recordAudit } from "@/lib/observability/audit";
 import { getActor } from "@/lib/admin/actor";
+import { requireApiAdmin } from "@/lib/auth/api-admin-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -24,6 +25,8 @@ const Body = z.object({
  *                                          allow the fast path for v1)
  */
 export async function POST(req: Request, { params }: { params: { id: string } }) {
+  const guard = await requireApiAdmin();
+  if (guard instanceof NextResponse) return guard;
   if (!process.env.DATABASE_URL) {
     return NextResponse.json({ error: "db_not_configured" }, { status: 503 });
   }

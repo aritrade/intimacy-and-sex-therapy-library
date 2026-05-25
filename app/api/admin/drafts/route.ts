@@ -4,6 +4,7 @@ import { desc, eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { contentDrafts, resources } from "@/lib/db/schema";
 import { generateScript, ScriptRefusal } from "@/lib/social/script-generator";
+import { requireApiAdmin } from "@/lib/auth/api-admin-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,6 +16,8 @@ export const dynamic = "force-dynamic";
  *                                   `script_draft`. Does NOT render or post.
  */
 export async function GET() {
+  const guard = await requireApiAdmin();
+  if (guard instanceof NextResponse) return guard;
   if (!process.env.DATABASE_URL) {
     return NextResponse.json({ drafts: [], note: "DATABASE_URL not set" });
   }
@@ -36,6 +39,8 @@ const PostBody = z.object({
 });
 
 export async function POST(req: Request) {
+  const guard = await requireApiAdmin();
+  if (guard instanceof NextResponse) return guard;
   if (!process.env.DATABASE_URL) {
     return NextResponse.json(
       { error: "db_not_configured", detail: "DATABASE_URL is not set." },

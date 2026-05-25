@@ -6,6 +6,7 @@ import { contentDrafts } from "@/lib/db/schema";
 import { publishDraft } from "@/lib/social/publish";
 import { recordAudit } from "@/lib/observability/audit";
 import { getActor } from "@/lib/admin/actor";
+import { requireApiAdmin } from "@/lib/auth/api-admin-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -35,6 +36,8 @@ const Body = z.object({
  * container) and we record those failures rather than retry blindly.
  */
 export async function POST(req: Request, { params }: { params: { id: string } }) {
+  const guard = await requireApiAdmin();
+  if (guard instanceof NextResponse) return guard;
   const json = await req.json().catch(() => null);
   const parsed = Body.safeParse(json ?? {});
   if (!parsed.success) {

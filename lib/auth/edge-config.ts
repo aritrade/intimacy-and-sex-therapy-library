@@ -36,6 +36,20 @@ if (process.env.AUTH_RESEND_KEY && process.env.AUTH_RESEND_FROM) {
   );
 }
 
+/**
+ * Bootstrap-admin allowlist parsed at module load. This is the SAME env var
+ * the jwt() callback in auth.ts uses to seed the `admin` user_roles row on
+ * first sign-in. We also consult it here so the session.user.roles array
+ * always reflects admin status for these emails, even if the role row never
+ * propagated to the JWT token (real bug we've been hitting — DB has the row
+ * but the SELECT-after-INSERT path stamped an empty roles array onto the
+ * cookie). One place to fix the symptom for every downstream consumer.
+ */
+const BOOTSTRAP_ADMIN_EMAILS = (process.env.BOOTSTRAP_ADMIN_EMAILS ?? "")
+  .split(",")
+  .map((e) => e.trim().toLowerCase())
+  .filter((e) => e.length > 0);
+
 export const edgeAuthConfig: NextAuthConfig = {
   providers,
   session: { strategy: "jwt" },
@@ -48,7 +62,18 @@ export const edgeAuthConfig: NextAuthConfig = {
     async session({ session, token }) {
       if (session.user) {
         session.user.id = (token.sub as string) ?? "";
-        session.user.roles = (token.roles as string[]) ?? ["user"];
+        let roles = (token.roles as string[]) ?? ["user"];
+
+        const email = (session.user.email ?? "").toLowerCase();
+        if (
+          email &&
+          BOOTSTRAP_ADMIN_EMAILS.includes(email) &&
+          !roles.includes("admin")
+        ) {
+          roles = [...roles, "admin"];
+        }
+
+        session.user.roles = roles;
       }
       return session;
     },

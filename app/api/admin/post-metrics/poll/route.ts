@@ -3,6 +3,7 @@ import { z } from "zod";
 import { pollAllPostMetrics } from "@/lib/social/metrics-poller";
 import { recordAudit } from "@/lib/observability/audit";
 import { getActor } from "@/lib/admin/actor";
+import { requireApiAdmin } from "@/lib/auth/api-admin-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -20,6 +21,8 @@ const Body = z.object({
  * uses). Returns the summary report. Admin-gated via the middleware.
  */
 export async function POST(req: Request) {
+  const guard = await requireApiAdmin();
+  if (guard instanceof NextResponse) return guard;
   if (!process.env.DATABASE_URL) {
     return NextResponse.json({ error: "db_not_configured" }, { status: 503 });
   }
