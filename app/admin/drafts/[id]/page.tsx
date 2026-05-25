@@ -191,8 +191,27 @@ export default async function DraftReview({ params }: { params: { id: string } }
 
       {draft.videoUrl && (
         <section className="card p-5 mt-4">
-          <h2 className="font-serif text-xl text-ink-900">Rendered video</h2>
-          <video controls src={draft.videoUrl} className="mt-3 w-full max-w-sm rounded-xl border border-border" />
+          <div className="flex items-baseline justify-between gap-3 flex-wrap">
+            <h2 className="font-serif text-xl text-ink-900">Rendered video</h2>
+            <a
+              href={draft.videoUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="text-xs text-ink-400 underline hover:text-ink-900"
+            >
+              Open in new tab ↗
+            </a>
+          </div>
+          <video
+            controls
+            preload="auto"
+            playsInline
+            src={draft.videoUrl}
+            className="mt-3 w-full max-w-md rounded-xl border border-border bg-bg"
+          />
+          <p className="mt-2 text-[11px] text-ink-400 font-mono break-all">
+            {draft.videoUrl}
+          </p>
         </section>
       )}
 

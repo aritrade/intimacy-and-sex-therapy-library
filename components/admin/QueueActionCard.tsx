@@ -145,14 +145,29 @@ export function QueueActionCard({ lane, draft }: { lane: string; draft: Draft })
       </p>
 
       {draft.videoUrl && (
-        <video
-          src={draft.videoUrl}
-          controls
-          preload="metadata"
-          playsInline
-          className="w-full rounded-lg border border-border bg-bg"
-          style={{ maxHeight: 320 }}
-        />
+        <div className="space-y-1.5">
+          <video
+            src={draft.videoUrl}
+            controls
+            preload="auto"
+            playsInline
+            className="w-full rounded-lg border border-border bg-bg"
+            style={{ maxHeight: 360 }}
+          />
+          <div className="flex items-center justify-between text-[11px] text-ink-400">
+            <span>
+              {/^https:\/\//.test(draft.videoUrl) ? "HTTPS · ready to publish" : "Local path · not publishable"}
+            </span>
+            <a
+              href={draft.videoUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="underline hover:text-ink-900"
+            >
+              Open video in new tab ↗
+            </a>
+          </div>
+        </div>
       )}
 
       {doneMessage ? (
