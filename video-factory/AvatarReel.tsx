@@ -2,6 +2,7 @@ import React from "react";
 import {
   AbsoluteFill,
   Audio,
+  Img,
   OffthreadVideo,
   Sequence,
   interpolate,
@@ -44,6 +45,14 @@ export type AvatarReelProps = {
   language: "en" | "hi" | "hinglish";
   /** HTTPS URL of the avatar MP4 (returned by lib/social/avatar.ts). */
   avatarUrl: string | null;
+  /**
+   * HTTPS URL of the static persona portrait. Used as a Ken-Burns
+   * still in the avatar slot when lip-sync generation is unavailable
+   * (no Replicate credit, model down, daily cap hit). Lets the AvatarReel
+   * keep its visual identity — kinetic typography, B-roll cutaways,
+   * voiceover, warm radio-booth backdrop — even without the talking head.
+   */
+  portraitUrl: string | null;
   /** HTTPS URL of the voiceover MP3 (played as primary audio). */
   voiceoverUrl: string | null;
   totalSeconds: number;
@@ -58,6 +67,7 @@ export const AvatarReel: React.FC<AvatarReelProps> = ({
   cta,
   citationLine,
   avatarUrl,
+  portraitUrl,
   voiceoverUrl,
   totalSeconds,
 }) => {
@@ -93,10 +103,17 @@ export const AvatarReel: React.FC<AvatarReelProps> = ({
       {/* Avatar plays the entire duration MUTED. Each scene Sequence may
           overlay stock B-roll on top of it; the avatar continues
           underneath so cutaways feel like a director cutting away from
-          the host, not stopping her. */}
-      {avatarUrl && (
+          the host, not stopping her.
+
+          When lip-sync isn't available we fall back to a Ken-Burns still
+          of the persona portrait — same visual position, same brand
+          identity, just no mouth movement. The voiceover plays as the
+          primary audio track underneath either way. */}
+      {avatarUrl ? (
         <AvatarFrame avatarUrl={avatarUrl} />
-      )}
+      ) : portraitUrl ? (
+        <PortraitStillFrame portraitUrl={portraitUrl} totalSeconds={totalSeconds} />
+      ) : null}
 
       {/* Hook scene: text overlay, avatar visible underneath. */}
       <Sequence from={hookRange.from} durationInFrames={hookRange.durationInFrames}>
@@ -136,6 +153,60 @@ export const AvatarReel: React.FC<AvatarReelProps> = ({
 };
 
 /* -------------------------- avatar + B-roll layers -------------------------- */
+
+/**
+ * Pseudo-avatar: the persona portrait rendered as a still in the same
+ * frame slot as the talking-head video, with a slow Ken-Burns zoom-in
+ * across the entire reel so it doesn't read as dead. Used when
+ * lib/social/avatar.ts refused (no credit, model down, cap hit, etc.).
+ */
+const PortraitStillFrame: React.FC<{
+  portraitUrl: string;
+  totalSeconds: number;
+}> = ({ portraitUrl, totalSeconds }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const totalFrames = totalSeconds * fps;
+  // Slow zoom from 1.0 -> 1.06 across the whole reel, plus a tiny
+  // vertical drift to fake parallax. Subtle enough not to distract
+  // from the kinetic typography, present enough that the still
+  // doesn't feel like a frozen screenshot.
+  const scale = interpolate(frame, [0, totalFrames], [1.0, 1.06], {
+    extrapolateRight: "clamp",
+  });
+  const translateY = interpolate(frame, [0, totalFrames], [0, -12], {
+    extrapolateRight: "clamp",
+  });
+  return (
+    <AbsoluteFill
+      style={{
+        top: AVATAR_AREA_TOP,
+        height: AVATAR_AREA_HEIGHT,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        overflow: "hidden",
+      }}
+    >
+      <Img
+        src={portraitUrl}
+        style={{
+          width: 1080,
+          height: 1080,
+          objectFit: "cover",
+          transform: `translateY(${translateY}px) scale(${scale})`,
+        }}
+      />
+      <AbsoluteFill
+        style={{
+          pointerEvents: "none",
+          background:
+            "linear-gradient(180deg, rgba(16,17,21,0.45) 0%, rgba(16,17,21,0) 18%, rgba(16,17,21,0) 80%, rgba(16,17,21,0.55) 100%)",
+        }}
+      />
+    </AbsoluteFill>
+  );
+};
 
 const AvatarFrame: React.FC<{ avatarUrl: string }> = ({ avatarUrl }) => (
   <AbsoluteFill

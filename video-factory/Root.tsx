@@ -31,6 +31,7 @@ const sampleAvatar: AvatarReelProps = {
   ...sample,
   scenes: sample.scenes.map((s) => ({ ...s, clips: [] })),
   avatarUrl: null,
+  portraitUrl: null,
   voiceoverUrl: null,
 };
 

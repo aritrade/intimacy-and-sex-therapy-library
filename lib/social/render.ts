@@ -26,6 +26,7 @@ import { scriptToSrt } from "./stt-local";
 import { uploadRenderArtifact } from "./blob-host";
 import { pickClipsForScript } from "./stock-clips";
 import { generateAvatarVideo, AvatarRefusal } from "./avatar";
+import { NARRATOR } from "../brand/persona";
 import type { GeneratedScript } from "./script-generator";
 
 export type RenderInput = {
@@ -133,18 +134,48 @@ export async function renderDraft(input: RenderInput): Promise<RenderResult> {
     }
   }
 
-  // 2.5) Generate the talking-head avatar MP4 via Replicate when the
+  // 2.5) Pre-upload the persona portrait so the AvatarReel composition
+  //      can reference it via HTTPS (Remotion's bundler can't fetch
+  //      Next-style /public paths during render). The same URL is also
+  //      what we pass to Replicate as source_image when the lip-sync
+  //      path is available. Cheap idempotent upload — one ~500KB PNG
+  //      per draft.
+  let portraitUrl: string | null = null;
+  if (style === "avatar" && existsSync(NARRATOR.portraitPath)) {
+    try {
+      const r = await uploadRenderArtifact(
+        NARRATOR.portraitPath,
+        draftId,
+        "narrator.png",
+      );
+      if (r.hosted === "vercel-blob" && r.url.startsWith("https://")) {
+        portraitUrl = r.url;
+      } else {
+        console.warn(
+          "[render] portrait not on HTTPS host (BLOB_READ_WRITE_TOKEN unset?); AvatarReel will render the warm-amber backdrop only",
+        );
+      }
+    } catch (e) {
+      console.warn(
+        "[render] portrait pre-upload failed; AvatarReel will render the warm-amber backdrop only:",
+        (e as Error).message,
+      );
+    }
+  }
+
+  // 2.6) Generate the talking-head avatar MP4 via Replicate when the
   //      operator chose style:"avatar" and Replicate is configured.
-  //      Auto-falls back to style:"stock" on any refusal so a video is
-  //      always produced; the refusal reason is logged for diagnosis.
+  //      On any refusal we KEEP style:"avatar" but render the AvatarReel
+  //      composition with avatarUrl=null — the comp falls back to a
+  //      Ken-Burns still of the persona portrait so the visual identity
+  //      stays consistent. The refusal reason is logged for diagnosis.
   let avatarUrl: string | null = null;
   if (style === "avatar") {
     if (!renderVoiceoverUrl) {
       console.warn(
-        "[render] avatar style requires a public HTTPS voiceover URL " +
-          "(BLOB_READ_WRITE_TOKEN must be set). Falling back to style:'stock'.",
+        "[render] avatar lip-sync skipped: no HTTPS voiceover URL " +
+          "(BLOB_READ_WRITE_TOKEN may be unset). AvatarReel will use the still-portrait fallback.",
       );
-      style = "stock";
     } else {
       try {
         const av = await generateAvatarVideo({
@@ -159,15 +190,14 @@ export async function renderDraft(input: RenderInput): Promise<RenderResult> {
       } catch (e) {
         if (e instanceof AvatarRefusal) {
           console.warn(
-            `[render] avatar refused (${e.reason}); falling back to style:'stock'. detail=${e.detail ?? ""}`,
+            `[render] avatar lip-sync refused (${e.reason}); AvatarReel will use the still-portrait fallback. detail=${e.detail ?? ""}`,
           );
         } else {
           console.warn(
-            `[render] avatar threw unexpectedly; falling back to style:'stock':`,
+            `[render] avatar lip-sync threw unexpectedly; AvatarReel will use the still-portrait fallback:`,
             (e as Error).message,
           );
         }
-        style = "stock";
       }
     }
   }
@@ -200,10 +230,12 @@ export async function renderDraft(input: RenderInput): Promise<RenderResult> {
   }
 
   // 4) Pick the composition + override props. The AvatarReel reads
-  //     `avatarUrl`; the typography / stock comps ignore it.
+  //     `avatarUrl` + `portraitUrl`; the typography / stock comps
+  //     ignore them.
   const compositionInputProps = {
     hook: script.hook,
     avatarUrl,
+    portraitUrl,
     scenes: scenesWithClips,
     cta: script.cta,
     citationLine: script.citationLine,

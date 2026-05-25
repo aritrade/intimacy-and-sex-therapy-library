@@ -447,7 +447,7 @@ statuses, so re-rendering doesn't silently undo your approvals.
 | LinkedIn / Twitter fail silently in audit            | Cross-posters are best-effort                               | Check creds + scopes. Failures don't flip the draft to `failed`.                             |
 | Render log shows `avatar refused (cap_exceeded)`     | Today's projected Replicate spend > `REPLICATE_MAX_USD_PER_DAY` | Either raise the cap in `.env`/Vercel, wait until UTC midnight, or accept the stock fallback. |
 | Render log shows `avatar refused (missing_token)`    | `REPLICATE_API_TOKEN` not set                               | Add it from replicate.com/account/api-tokens; pipeline falls back to stock automatically.    |
-| Render log shows `avatar refused (prediction_failed)` | Replicate model errored (rare — usually audio length cap)  | Check the embedded `logs=` tail in the log line. For Hallo, scripts >60s often fail; trim.   |
+| Render log shows `avatar refused (prediction_failed)` | Replicate model errored (rare — usually audio length cap)  | Check the embedded `logs=` tail in the log line. For SadTalker, scripts >90s sometimes fail; trim. |
 
 ---
 

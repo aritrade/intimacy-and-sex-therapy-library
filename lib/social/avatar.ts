@@ -115,19 +115,58 @@ export async function generateAvatarVideo(
   const portraitBuffer = await readFile(NARRATOR.portraitPath);
   const portraitBlob = await uploadPortraitToBlob(portraitBuffer, input.draftId);
 
-  // Model: default to Tencent's Hallo (highest quality talking-head
-  // currently on Replicate). Operators can pin a cheaper model via env.
+  // Model: default to cjwbw/sadtalker — 169K+ runs on Replicate, the
+  // most battle-tested still-image talking-head model. Output quality
+  // is "okay TikTok-grade" (not photorealistic — Hallo/AniPortrait are
+  // better but were not available on Replicate at the time we picked).
+  // Operators can swap via REPLICATE_AVATAR_MODEL when something
+  // higher-fidelity ships. Input/output mapping below assumes the
+  // SadTalker schema; revisit when changing models.
   const model =
     input.model ??
     process.env.REPLICATE_AVATAR_MODEL ??
-    "zsxkib/hallo";
+    "cjwbw/sadtalker";
 
-  // POST /v1/models/<owner>/<name>/predictions — uses the latest
-  // version of the model without us pinning a version hash that goes
-  // stale. Synchronous waiting (Prefer: wait) is capped at 60s on
-  // Replicate's side, so we fall back to async polling when needed.
+  // SadTalker's input keys are source_image + driven_audio. Other
+  // models name them differently (Wav2Lip uses face/audio; AniPortrait
+  // uses ref_img/wav). Centralise the mapping in one place so the
+  // swap is a single edit.
+  const inputPayload = sadTalkerInput(model, portraitBlob.url, input.voiceoverUrl);
+
+  // Replicate has two prediction endpoints:
+  //   - POST /v1/models/<owner>/<name>/predictions   (official models only)
+  //   - POST /v1/predictions  with { version: <hash> } (works for all
+  //                                                      community models)
+  // SadTalker and most other talking-head models on Replicate are
+  // community-hosted, so we always use the version-pinned form. We
+  // resolve the model's current latest_version on every call so the
+  // version hash never goes stale.
+  const versionRes = await fetch(
+    `https://api.replicate.com/v1/models/${model}`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+  if (!versionRes.ok) {
+    const text = await versionRes.text().catch(() => "");
+    throw new AvatarRefusal(
+      "submit_failed",
+      `Could not resolve model ${model}: ${versionRes.status} ${versionRes.statusText} ${text.slice(0, 300)}`,
+    );
+  }
+  const modelMeta = (await versionRes.json()) as {
+    latest_version?: { id?: string };
+  };
+  const versionId = modelMeta.latest_version?.id;
+  if (!versionId) {
+    throw new AvatarRefusal(
+      "submit_failed",
+      `Model ${model} has no latest_version. The model may be unpublished or private.`,
+    );
+  }
+
+  // Synchronous waiting (Prefer: wait) is capped at 60s on Replicate's
+  // side, so we fall back to async polling when needed.
   const submitRes = await fetch(
-    `https://api.replicate.com/v1/models/${model}/predictions`,
+    `https://api.replicate.com/v1/predictions`,
     {
       method: "POST",
       headers: {
@@ -135,12 +174,7 @@ export async function generateAvatarVideo(
         "Content-Type": "application/json",
         Prefer: "wait=60",
       },
-      body: JSON.stringify({
-        input: {
-          source_image: portraitBlob.url,
-          driving_audio: input.voiceoverUrl,
-        },
-      }),
+      body: JSON.stringify({ version: versionId, input: inputPayload }),
     },
   );
   if (!submitRes.ok) {
@@ -240,6 +274,44 @@ type ReplicatePrediction = {
   error: string | null;
   logs: string | null;
 };
+
+/**
+ * Map our generic { portrait, voiceover } pair into the model's
+ * specific input schema. Most models on Replicate name the keys
+ * differently (SadTalker: source_image / driven_audio; Wav2Lip:
+ * face / audio; AniPortrait: ref_img / wav). When you swap models
+ * via REPLICATE_AVATAR_MODEL, add a branch here so the rest of the
+ * pipeline doesn't change.
+ */
+function sadTalkerInput(
+  model: string,
+  portraitUrl: string,
+  audioUrl: string,
+): Record<string, unknown> {
+  const lower = model.toLowerCase();
+  if (lower.includes("sadtalker")) {
+    return {
+      source_image: portraitUrl,
+      driven_audio: audioUrl,
+      preprocess: "full",
+      // still=true reduces head-bob — better fit for the "trusted
+      // late-night radio host" persona where the head shouldn't
+      // bounce around.
+      still: true,
+      enhancer: "gfpgan",
+    };
+  }
+  if (lower.includes("wav2lip")) {
+    return { face: portraitUrl, audio: audioUrl };
+  }
+  if (lower.includes("aniportrait")) {
+    return { ref_img: portraitUrl, audio_path: audioUrl };
+  }
+  // Sensible fallback that matches the older Hallo schema some forks
+  // still expose. If a new model takes neither shape, the submit
+  // POST will return 422 and we'll surface it as AvatarRefusal.
+  return { source_image: portraitUrl, driving_audio: audioUrl };
+}
 
 async function uploadPortraitToBlob(buffer: Buffer, draftId: string) {
   // Use the existing helper but write to a stable per-draft path so
