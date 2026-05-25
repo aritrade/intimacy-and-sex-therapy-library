@@ -20,6 +20,7 @@
  */
 
 import { synthesizeEdgeTTS } from "./tts-edge";
+import { NARRATOR } from "../brand/persona";
 
 export type TTSLocale = "en" | "hi" | "hinglish";
 
@@ -104,7 +105,12 @@ async function synthesizeEnglish(text: string): Promise<TTSResult | null> {
   const key = process.env.ELEVENLABS_API_KEY;
   if (!key) return null;
 
-  const voiceId = process.env.ELEVENLABS_VOICE_ID ?? "EXAVITQu4vr4xnSDxMaL"; // Bella, ElevenLabs free voice
+  // Default to the persona's voice (Rachel — grounded, late-30s timbre,
+  // matches the "late-night radio host" anchor). Pre-existing env var
+  // ELEVENLABS_VOICE_ID still wins so an operator can pin a different
+  // voice on a side channel without code changes.
+  const voiceId =
+    process.env.ELEVENLABS_VOICE_ID ?? NARRATOR.tts.elevenLabsVoiceId;
   const url = `${process.env.ELEVENLABS_API_URL ?? "https://api.elevenlabs.io"}/v1/text-to-speech/${voiceId}`;
   const res = await fetch(url, {
     method: "POST",

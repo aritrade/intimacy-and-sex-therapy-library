@@ -18,11 +18,17 @@
 
 import { MsEdgeTTS, OUTPUT_FORMAT } from "msedge-tts";
 import type { TTSResult, TTSLocale } from "./tts";
+import { NARRATOR } from "../brand/persona";
 
+// English defaults to the narrator persona's voice (currently
+// en-US-AvaNeural — slightly slower, warmer, podcast-style delivery).
+// Hindi/Hinglish keep Indic voices because en-US would be jarring.
+// Operators can still pin a specific voice via EDGE_TTS_VOICE_<LOCALE>.
 const DEFAULT_VOICES: Record<TTSLocale, string> = {
-  en: process.env.EDGE_TTS_VOICE_EN ?? "en-IN-NeerjaNeural",
-  hi: process.env.EDGE_TTS_VOICE_HI ?? "hi-IN-SwaraNeural",
-  hinglish: process.env.EDGE_TTS_VOICE_HINGLISH ?? "en-IN-NeerjaNeural",
+  en: process.env.EDGE_TTS_VOICE_EN ?? NARRATOR.tts.edgeEnglishVoice,
+  hi: process.env.EDGE_TTS_VOICE_HI ?? NARRATOR.tts.edgeHindiVoice,
+  hinglish:
+    process.env.EDGE_TTS_VOICE_HINGLISH ?? NARRATOR.tts.edgeIndianEnglishVoice,
 };
 
 export async function synthesizeEdgeTTS(

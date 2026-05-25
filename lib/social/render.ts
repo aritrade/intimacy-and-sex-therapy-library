@@ -25,6 +25,7 @@ import { transcribe, wordsToSrt, drift } from "./stt";
 import { scriptToSrt } from "./stt-local";
 import { uploadRenderArtifact } from "./blob-host";
 import { pickClipsForScript } from "./stock-clips";
+import { generateAvatarVideo, AvatarRefusal } from "./avatar";
 import type { GeneratedScript } from "./script-generator";
 
 export type RenderInput = {
@@ -32,10 +33,12 @@ export type RenderInput = {
   script: GeneratedScript;
   language: "en" | "hi" | "hinglish";
   /**
-   * Visual style. Defaults to "typography" (the existing comp). Other
-   * styles are rendered by separate Remotion compositions.
+   * Visual style. Defaults to "avatar" (talking-head persona). Other
+   * styles are rendered by separate Remotion compositions and the
+   * "avatar" style auto-falls back to "stock" when Replicate fails or
+   * the daily USD cap is exceeded.
    */
-  style?: "typography" | "stock" | "long_form_essay";
+  style?: "typography" | "stock" | "long_form_essay" | "avatar";
 };
 
 export type RenderResult = {
@@ -55,11 +58,17 @@ const COMPOSITION_BY_STYLE: Record<NonNullable<RenderInput["style"]>, string> = 
   typography: "ShortFormVideo",
   stock: "StockReel",
   long_form_essay: "LongFormEssay",
+  avatar: "AvatarReel",
 };
 
 export async function renderDraft(input: RenderInput): Promise<RenderResult> {
   const { draftId, script, language } = input;
-  const style = input.style ?? "typography";
+  // Default style for new drafts is the avatar composition once the
+  // persona portrait is committed and REPLICATE_API_TOKEN is set. The
+  // composition falls back to "stock" automatically below when the
+  // avatar generation step refuses, so this default is safe even
+  // before the operator has configured Replicate.
+  let style: NonNullable<RenderInput["style"]> = input.style ?? "avatar";
   const renderDir = join(process.cwd(), "public", "renders", draftId);
   await mkdir(renderDir, { recursive: true });
 
@@ -124,15 +133,54 @@ export async function renderDraft(input: RenderInput): Promise<RenderResult> {
     }
   }
 
-  // 3) For stock / long-form styles, fetch B-roll clips per scene.
-  //    Skipped (and the comp falls back to gradient orbs) when no
-  //    Pexels/Pixabay key is configured.
+  // 2.5) Generate the talking-head avatar MP4 via Replicate when the
+  //      operator chose style:"avatar" and Replicate is configured.
+  //      Auto-falls back to style:"stock" on any refusal so a video is
+  //      always produced; the refusal reason is logged for diagnosis.
+  let avatarUrl: string | null = null;
+  if (style === "avatar") {
+    if (!renderVoiceoverUrl) {
+      console.warn(
+        "[render] avatar style requires a public HTTPS voiceover URL " +
+          "(BLOB_READ_WRITE_TOKEN must be set). Falling back to style:'stock'.",
+      );
+      style = "stock";
+    } else {
+      try {
+        const av = await generateAvatarVideo({
+          voiceoverUrl: renderVoiceoverUrl,
+          draftId,
+          audioDurationSeconds: totalSeconds,
+        });
+        avatarUrl = av.publicUrl;
+        console.log(
+          `[render] avatar generated (~$${av.estimatedUsd.toFixed(3)} via ${av.modelUsed}) -> ${av.publicUrl}`,
+        );
+      } catch (e) {
+        if (e instanceof AvatarRefusal) {
+          console.warn(
+            `[render] avatar refused (${e.reason}); falling back to style:'stock'. detail=${e.detail ?? ""}`,
+          );
+        } else {
+          console.warn(
+            `[render] avatar threw unexpectedly; falling back to style:'stock':`,
+            (e as Error).message,
+          );
+        }
+        style = "stock";
+      }
+    }
+  }
+
+  // 3) For stock / long-form / avatar styles, fetch B-roll clips per
+  //    scene. Skipped (and the comp falls back to gradient orbs) when
+  //    no Pexels/Pixabay key is configured.
   let scenesWithClips: Array<{ text: string; seconds: number; title?: string; clips: { url: string; attribution: string | null; width: number; height: number }[] }> = script.body.map((b) => ({
     text: b.text,
     seconds: b.seconds,
     clips: [],
   }));
-  if (style === "stock" || style === "long_form_essay") {
+  if (style === "stock" || style === "long_form_essay" || style === "avatar") {
     try {
       const perSceneClips = await pickClipsForScript(script);
       scenesWithClips = script.body.map((b, i) => ({
@@ -151,9 +199,11 @@ export async function renderDraft(input: RenderInput): Promise<RenderResult> {
     }
   }
 
-  // 4) Pick the composition + override props
+  // 4) Pick the composition + override props. The AvatarReel reads
+  //     `avatarUrl`; the typography / stock comps ignore it.
   const compositionInputProps = {
     hook: script.hook,
+    avatarUrl,
     scenes: scenesWithClips,
     cta: script.cta,
     citationLine: script.citationLine,

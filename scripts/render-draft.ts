@@ -1,23 +1,47 @@
 /**
  * Render a draft locally to /public/renders/<id>/video.mp4.
  *
- *   npm run render -- <draftId>
+ *   npm run render -- <draftId> [--style typography|stock|avatar|long_form_essay]
  *
  * Loads the draft from the DB, parses its scriptMd, runs the full
- * TTS → Remotion → Whisper pipeline, and updates the row with videoUrl,
- * voiceoverUrl, captionsSrt, and status="rendered".
+ * TTS → (optional Replicate avatar) → Remotion → Whisper pipeline,
+ * and updates the row with videoUrl, voiceoverUrl, captionsSrt, and
+ * status="rendered". Default style is "avatar" which automatically
+ * falls back to "stock" if REPLICATE_API_TOKEN is unset or the daily
+ * cap is exceeded.
  */
 import "dotenv/config";
 import { eq } from "drizzle-orm";
 import { db } from "../lib/db/client";
 import { contentDrafts } from "../lib/db/schema";
-import { renderDraft } from "../lib/social/render";
+import { renderDraft, type RenderInput } from "../lib/social/render";
 import type { GeneratedScript } from "../lib/social/script-generator";
 
+type Style = NonNullable<RenderInput["style"]>;
+const KNOWN_STYLES: Style[] = ["typography", "stock", "avatar", "long_form_essay"];
+
+function parseArgs(argv: string[]): { id?: string; style?: Style } {
+  const args: { id?: string; style?: Style } = {};
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === "--style" && argv[i + 1]) {
+      const s = argv[++i] as Style;
+      if (!KNOWN_STYLES.includes(s)) {
+        console.error(`Unknown --style "${s}". Must be one of: ${KNOWN_STYLES.join(", ")}`);
+        process.exit(2);
+      }
+      args.style = s;
+    } else if (!a.startsWith("--") && !args.id) {
+      args.id = a;
+    }
+  }
+  return args;
+}
+
 async function main() {
-  const id = process.argv[2];
+  const { id, style } = parseArgs(process.argv.slice(2));
   if (!id) {
-    console.error("Usage: npm run render -- <draftId>");
+    console.error("Usage: npm run render -- <draftId> [--style typography|stock|avatar|long_form_essay]");
     process.exit(2);
   }
   if (!process.env.DATABASE_URL) {
@@ -42,6 +66,7 @@ async function main() {
     draftId: draft.id,
     script,
     language: draft.language as "en" | "hi" | "hinglish",
+    style,
   });
 
   // Status transition rules:

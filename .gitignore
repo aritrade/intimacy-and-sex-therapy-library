@@ -3,6 +3,11 @@ node_modules
 .env
 .env.local
 .env*.local
+
+# Per-machine daily-spend ledger for lib/social/avatar.ts cap enforcement.
+.replicate-usage.json
+# Local-only working area (portrait candidates etc.)
+.tmp/
 *.log
 .DS_Store
 .vercel

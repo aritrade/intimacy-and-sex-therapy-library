@@ -1,6 +1,7 @@
 import { Composition } from "remotion";
 import { ShortFormVideo, type ShortFormProps } from "./ShortFormVideo";
 import { StockReel, type StockReelProps } from "./StockReel";
+import { AvatarReel, type AvatarReelProps } from "./AvatarReel";
 import { LongFormEssay, type LongFormEssayProps } from "./LongFormEssay";
 import { QuoteCarousel, type QuoteCarouselProps } from "./QuoteCarousel";
 
@@ -24,6 +25,13 @@ const sample: ShortFormProps = {
 const sampleStock: StockReelProps = {
   ...sample,
   scenes: sample.scenes.map((s) => ({ ...s, clips: [] })),
+};
+
+const sampleAvatar: AvatarReelProps = {
+  ...sample,
+  scenes: sample.scenes.map((s) => ({ ...s, clips: [] })),
+  avatarUrl: null,
+  voiceoverUrl: null,
 };
 
 const sampleLong: LongFormEssayProps = {
@@ -77,6 +85,22 @@ export const RemotionRoot: React.FC = () => {
         width={1080}
         height={1920}
         defaultProps={sampleStock}
+        calculateMetadata={({ props }) => ({
+          durationInFrames: Math.ceil(props.totalSeconds * FPS),
+        })}
+      />
+
+      {/* 9:16 avatar reel — persona talking-head with kinetic typography
+          + B-roll cutaways. The marquee composition once the avatar
+          pipeline is wired in. */}
+      <Composition
+        id="AvatarReel"
+        component={AvatarReel}
+        durationInFrames={Math.ceil(sampleAvatar.totalSeconds * FPS)}
+        fps={FPS}
+        width={1080}
+        height={1920}
+        defaultProps={sampleAvatar}
         calculateMetadata={({ props }) => ({
           durationInFrames: Math.ceil(props.totalSeconds * FPS),
         })}

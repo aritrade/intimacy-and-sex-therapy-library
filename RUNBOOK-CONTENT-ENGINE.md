@@ -171,7 +171,16 @@ PEXELS_API_KEY=<from pexels>
 PIXABAY_API_KEY=<from pixabay>
 
 # TTS — leave Sarvam / ElevenLabs blank to use Edge TTS (free)
+# Edge defaults to en-US-AvaNeural for English (the narrator persona).
 TTS_PROVIDER=edge
+
+# Avatar narrator (Replicate.com) — optional but recommended.
+# Signup: replicate.com -> "Sign in with GitHub" -> /account/api-tokens
+# Free tier: ~$5 credit = ~50 short renders before any billing.
+# When unset, the render pipeline silently falls back to the existing
+# stock-footage composition so videos still ship.
+REPLICATE_API_TOKEN=<r8_... from replicate.com/account/api-tokens>
+REPLICATE_MAX_USD_PER_DAY=2.00
 
 # Instagram
 INSTAGRAM_BUSINESS_ACCOUNT_ID=<from step 2>
@@ -380,6 +389,51 @@ Protections (do all four, once):
 
 ---
 
+## Narrator persona — what the AI face on your videos actually is
+
+The content engine ships every video through the **AvatarReel**
+composition by default. That composition shows a single static persona
+("a trusted late-night radio host who happens to be beautiful") with
+her mouth animated to the synthesised voiceover, kinetic typography in
+the upper third, and stock B-roll cutaways during specific scenes.
+
+**Locked artefacts (do not change without a rebrand discussion):**
+
+- `public/brand/narrator.png` — the static portrait. 768×768 PNG.
+- `public/brand/narrator.prompt.txt` — exact generation prompt + seed,
+  so the look can be reproduced on demand.
+- `lib/brand/persona.ts` — every voice/tone/look default in one file.
+  If you need to A/B the voice or experiment with a different ElevenLabs
+  voice id, override via env (`ELEVENLABS_VOICE_ID_NARRATOR`,
+  `EDGE_TTS_VOICE_EN_NARRATOR`) rather than editing the module.
+
+**Voice direction (what scripts should be written for):**
+
+- Unhurried pace, ~150 wpm.
+- Bold and confident; states things plainly, never hedges.
+- Warm tone but clinical content. **Not** seductive (that's a brand +
+  platform-safety decision — see the Meta/YouTube moderation notes).
+- Uses "you" generously, "we" occasionally, "I" rarely.
+
+**Cost guardrail:** `REPLICATE_MAX_USD_PER_DAY` (default $2.00) caps the
+talking-head spend per UTC day across all renders. When the projected
+spend for the next call would exceed the cap, the pipeline logs a
+refusal and falls back to the existing stock-footage composition so a
+video is still produced. Today's running total lives in
+`.replicate-usage.json` at the repo root (gitignored).
+
+**Re-renders:** to re-render an existing draft with the new pipeline:
+
+```bash
+npm run render -- <draftId>              # default: --style avatar
+npm run render -- <draftId> --style stock # force the old typography+stock look
+```
+
+The script preserves `editor_reviewed` / `scheduled` / `published`
+statuses, so re-rendering doesn't silently undo your approvals.
+
+---
+
 ## Failure modes & fixes
 
 | Symptom                                              | Likely cause                                                | Fix                                                                                          |
@@ -391,6 +445,9 @@ Protections (do all four, once):
 | `daily-generate` returns `skipped: queue_full`       | >12 drafts stuck in `script_draft`                          | Triage `/admin/queue`. Approve, reject, or delete to free the queue.                         |
 | Many `transient` errors from link-health             | Network blip                                                | Re-run the cron in 30 minutes; the agent dedupes.                                            |
 | LinkedIn / Twitter fail silently in audit            | Cross-posters are best-effort                               | Check creds + scopes. Failures don't flip the draft to `failed`.                             |
+| Render log shows `avatar refused (cap_exceeded)`     | Today's projected Replicate spend > `REPLICATE_MAX_USD_PER_DAY` | Either raise the cap in `.env`/Vercel, wait until UTC midnight, or accept the stock fallback. |
+| Render log shows `avatar refused (missing_token)`    | `REPLICATE_API_TOKEN` not set                               | Add it from replicate.com/account/api-tokens; pipeline falls back to stock automatically.    |
+| Render log shows `avatar refused (prediction_failed)` | Replicate model errored (rare — usually audio length cap)  | Check the embedded `logs=` tail in the log line. For Hallo, scripts >60s often fail; trim.   |
 
 ---
 
