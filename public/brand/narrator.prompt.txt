@@ -1,0 +1,43 @@
+# Persona portrait — generation provenance
+#
+# This file documents exactly how public/brand/narrator.png was produced.
+# Keep it in sync with that PNG. If we ever regenerate the portrait, update
+# both files in the same commit so we can always reproduce the look.
+
+Persona reference: "a trusted late-night radio host who happens to be beautiful"
+Anchor decisions: warm, bold, confident, attractive but clinical. NOT seductive.
+
+# Generator
+provider: pollinations.ai
+model: flux
+endpoint: https://image.pollinations.ai/prompt/{prompt}?width=1024&height=1024&seed={seed}&model=flux&nologo=true&enhance=true&negative={negative}
+seed: 284
+resolution_requested: 1024x1024
+resolution_returned: 768x768
+
+# Positive prompt (the ethnicity prefix is what we varied across candidates)
+prompt: |
+  latina hispanic mediterranean woman, Cinematic intimate portrait of a
+  confident professional woman in her early 30s, soft warm amber lighting
+  from a single side source, slight knowing smile, direct calm eye contact
+  with viewer, charcoal grey high-neck sweater, minimalist styling, dark
+  studio background suggesting a late-night radio booth, photorealistic,
+  shallow depth of field, 85mm portrait lens look, warm cinematic color
+  grade, editorial photography style, natural skin texture, no jewelry,
+  no heavy makeup
+
+# Negative prompt
+negative: |
+  glamour shoot, fashion editorial, swimsuit, lingerie, exposed shoulders,
+  low-cut neckline, ring light, plastic skin, oversaturated, anime,
+  cartoon, multiple faces, watermark, text, instagram filter, deformed face
+
+# Notes
+notes: |
+  Candidate set of 5 generated 2026-05-25 covering South Asian, East Asian,
+  Black, Latina, and racially-ambiguous variants. Operator picked #4
+  (Latina). Other candidates were discarded.
+
+  The FLUX backend slightly ignored "no jewelry" and rendered a single
+  hoop earring. Accepted as-is since it doesn't conflict with the
+  professional clinical brief.
