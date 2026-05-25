@@ -174,13 +174,15 @@ PIXABAY_API_KEY=<from pixabay>
 # Edge defaults to en-US-AvaNeural for English (the narrator persona).
 TTS_PROVIDER=edge
 
-# Avatar narrator (Replicate.com) — optional but recommended.
-# Signup: replicate.com -> "Sign in with GitHub" -> /account/api-tokens
-# Free tier: ~$5 credit = ~50 short renders before any billing.
-# When unset, the render pipeline silently falls back to the existing
-# stock-footage composition so videos still ship.
-REPLICATE_API_TOKEN=<r8_... from replicate.com/account/api-tokens>
-REPLICATE_MAX_USD_PER_DAY=2.00
+# Avatar narrator — talking-head lip sync of the persona portrait.
+# Default provider is "github-actions" (free, no credit card).
+# See the "Narrator persona" section below for how to set up the
+# GH PAT and what the workflow does. When provider creds are missing
+# or the workflow fails, the render pipeline silently falls back to
+# the still-portrait Ken-Burns composition so videos still ship.
+AVATAR_PROVIDER=github-actions
+GH_AVATAR_TOKEN=<fine-grained PAT — Actions: read/write on this repo>
+GH_AVATAR_REPO=productdecoded/intimacy-and-sex-therapy-library
 
 # Instagram
 INSTAGRAM_BUSINESS_ACCOUNT_ID=<from step 2>
@@ -415,12 +417,45 @@ the upper third, and stock B-roll cutaways during specific scenes.
   platform-safety decision — see the Meta/YouTube moderation notes).
 - Uses "you" generously, "we" occasionally, "I" rarely.
 
-**Cost guardrail:** `REPLICATE_MAX_USD_PER_DAY` (default $2.00) caps the
-talking-head spend per UTC day across all renders. When the projected
-spend for the next call would exceed the cap, the pipeline logs a
-refusal and falls back to the existing stock-footage composition so a
-video is still produced. Today's running total lives in
-`.replicate-usage.json` at the repo root (gitignored).
+**How the lip sync actually gets generated:** the engine supports two
+providers via `AVATAR_PROVIDER`:
+
+| Provider          | Cost                 | Latency       | Card needed | Notes                                                                                          |
+| ----------------- | -------------------- | ------------- | ----------- | ---------------------------------------------------------------------------------------------- |
+| `github-actions`  | **free** (GH quota)  | ~5–10 min     | No          | Default. Runs `.github/workflows/avatar-render.yml` on a free Linux runner, installs SadTalker, uploads the MP4 as a workflow artifact, the Node process re-hosts on Vercel Blob. |
+| `replicate`       | ~$0.002 per 30s reel | ~30 s         | Yes         | Faster but Replicate requires a payment method on file even for the free $5 credit. Optional escape hatch when you outgrow GH's quota. |
+
+**One-time setup for `github-actions` (the default):**
+
+1. Generate a fine-grained Personal Access Token at
+   <https://github.com/settings/personal-access-tokens/new>:
+   - Repository access: **Only select repositories** → this repo
+   - Repository permissions: **Actions: Read and write** (Metadata
+     auto-included)
+   - Expiration: 90 days (rotate quarterly)
+2. Add to local `.env`: `GH_AVATAR_TOKEN=<ghp_…>`
+3. Add to Vercel:
+   ```bash
+   printf '<ghp_…>' | vercel env add GH_AVATAR_TOKEN production --sensitive --yes
+   printf '<ghp_…>' | vercel env add GH_AVATAR_TOKEN preview --sensitive --yes
+   ```
+4. First run will take ~15 min (cold dep install + checkpoint
+   download). Subsequent runs ~7 min — pip wheels and the ~3 GB of
+   SadTalker checkpoints are cached between runs via
+   `actions/cache@v4`.
+
+**Quota math:** 5 reels/day × 30 days × ~7 min ≈ 1,050 minutes/month.
+GitHub's free tier gives 2,000 min/month, so you have ~50% headroom.
+At >8 reels/day you'll start hitting the quota — either upgrade to GH
+Pro ($4/mo for 3,000 min) or switch `AVATAR_PROVIDER=replicate`.
+
+**Cost guardrail (Replicate path only):** `REPLICATE_MAX_USD_PER_DAY`
+(default $2.00) caps the talking-head spend per UTC day across all
+renders. When the projected spend for the next call would exceed the
+cap, the pipeline logs a refusal and falls back to the still-portrait
+composition so a video is still produced. Today's running total lives
+in `.replicate-usage.json` at the repo root (gitignored). The
+`github-actions` path is free so the cap doesn't apply.
 
 **Re-renders:** to re-render an existing draft with the new pipeline:
 
@@ -446,8 +481,11 @@ statuses, so re-rendering doesn't silently undo your approvals.
 | Many `transient` errors from link-health             | Network blip                                                | Re-run the cron in 30 minutes; the agent dedupes.                                            |
 | LinkedIn / Twitter fail silently in audit            | Cross-posters are best-effort                               | Check creds + scopes. Failures don't flip the draft to `failed`.                             |
 | Render log shows `avatar refused (cap_exceeded)`     | Today's projected Replicate spend > `REPLICATE_MAX_USD_PER_DAY` | Either raise the cap in `.env`/Vercel, wait until UTC midnight, or accept the stock fallback. |
-| Render log shows `avatar refused (missing_token)`    | `REPLICATE_API_TOKEN` not set                               | Add it from replicate.com/account/api-tokens; pipeline falls back to stock automatically.    |
-| Render log shows `avatar refused (prediction_failed)` | Replicate model errored (rare — usually audio length cap)  | Check the embedded `logs=` tail in the log line. For SadTalker, scripts >90s sometimes fail; trim. |
+| Render log shows `avatar refused (missing_token)`    | `GH_AVATAR_TOKEN` (or `REPLICATE_API_TOKEN`) not set         | Add the PAT to `.env` + Vercel as documented in the Narrator section. Pipeline falls back to still-portrait. |
+| Render log shows `avatar refused (missing_github_repo)` | `GH_AVATAR_REPO` not set or wrong format                  | Set to `<owner>/<repo>` — usually `productdecoded/intimacy-and-sex-therapy-library`.            |
+| Render log shows `avatar refused (polling_timeout)`  | GH Actions run took >25 min (cold checkpoint download + slow runner) | Open the run URL printed in the log. Re-trigger if it eventually succeeded; bump `AVATAR_RENDER_MAX_WAIT_SECONDS` if cold runs consistently exceed 25 min. |
+| Render log shows `avatar refused (prediction_failed)` | Workflow run finished with conclusion=failure (or Replicate model errored) | Open the run URL in the error; check the "Run SadTalker inference" step logs. Common: GH cache miss + slow torch install. Re-trigger. |
+| Render log shows `avatar refused (artifact_not_found)` | Workflow succeeded but didn't upload the `avatar-<id>` artifact | Inspect the run's "Upload avatar artifact" step. The MP4 may have rendered but failed `if-no-files-found: error` because SadTalker produced zero output. |
 
 ---
 

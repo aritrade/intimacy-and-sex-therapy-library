@@ -25,6 +25,18 @@ public/renders/
 social/exports/
 out/
 
+# SadTalker local sandbox (only used if an operator runs the GH-Actions
+# runner script locally for debugging — the workflow itself clones into
+# a fresh runner each time).
+sadtalker-src/
+sadtalker-checkpoints/
+
+# Local-only operator scripts + .env backups that may carry secrets.
+scripts/_oneoff/
+scripts/push-vercel-secrets.sh
+.env*.bak
+.env.check*
+
 # Local agent / IDE scratch
 .cursor/
 .idea/

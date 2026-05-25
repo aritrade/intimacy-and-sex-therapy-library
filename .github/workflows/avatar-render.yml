@@ -1,0 +1,212 @@
+# Talking-head avatar generation on GitHub Actions.
+#
+# Why GitHub Actions (and not Vercel / Replicate / a personal Mac):
+#   - Vercel serverless: 5-15 min CPU inference exceeds the 5-minute
+#     hobby function timeout AND ephemeral filesystem makes 3GB of
+#     SadTalker weights impractical.
+#   - Replicate: works but requires a credit card on file; this engine
+#     is intentionally card-free.
+#   - Operator's Mac: works while the operator is at their desk but
+#     breaks the "autonomous content engine" promise (Mac must be on
+#     every day).
+#   - GH Actions: 2,000 free minutes/month, one persistent cache for
+#     model weights, runs on someone else's infra so it Just Works.
+#     At our cadence (5 reels/day × ~7 min) we use ~1,050 min/month.
+#
+# This workflow accepts a draft_id + portrait_url + audio_url and
+# produces an avatar MP4 uploaded as a workflow artifact named
+# `avatar-<draft_id>`. The caller (lib/social/avatar.ts in
+# github-actions mode) finds the run, downloads the artifact zip,
+# extracts avatar.mp4, and re-uploads to Vercel Blob using the same
+# helper the Replicate path uses. Single contract for downstream.
+#
+# Why artifacts (not "workflow uploads to Blob directly"):
+#   - The workflow needs zero secrets — operator can re-test from the
+#     GitHub UI by triggering manually and downloading the artifact.
+#   - Caller-side Blob upload reuses the same uploadRenderArtifact path
+#     so audit logging + URL shape matches the existing Replicate flow.
+#   - Easier to debug: if the artifact appears, render worked; if the
+#     Blob URL appears, host-side upload worked. Two narrower failure
+#     surfaces instead of one wide one.
+#
+# Required repo secrets: (none) — the workflow downloads inputs over
+# HTTPS and uploads the result as a public-by-repo artifact.
+#
+# Required workflow inputs (the caller passes these when triggering):
+#   - draft_id     UUID of the draft (used as the artifact name)
+#   - portrait_url HTTPS URL of the persona portrait (PNG)
+#   - audio_url    HTTPS URL of the voiceover (MP3)
+
+name: avatar-render
+
+on:
+  workflow_dispatch:
+    inputs:
+      draft_id:
+        description: "Draft UUID (used as the artifact name avatar-<id>)"
+        required: true
+        type: string
+      portrait_url:
+        description: "HTTPS URL of the persona portrait PNG"
+        required: true
+        type: string
+      audio_url:
+        description: "HTTPS URL of the voiceover MP3 / WAV"
+        required: true
+        type: string
+
+# Renders for different drafts can run in parallel, but two renders of
+# the SAME draft would race on the Blob path. Serialise per draft_id.
+concurrency:
+  group: avatar-${{ inputs.draft_id }}
+  cancel-in-progress: false
+
+jobs:
+  render:
+    name: SadTalker render
+    runs-on: ubuntu-latest
+    timeout-minutes: 30 # generous; a 30s clip typically takes 5-8 min on CPU
+
+    steps:
+      - name: Checkout (just the runner script + scripts/)
+        uses: actions/checkout@v4
+
+      - name: Validate inputs
+        env:
+          DRAFT_ID: ${{ inputs.draft_id }}
+          PORTRAIT_URL: ${{ inputs.portrait_url }}
+          AUDIO_URL: ${{ inputs.audio_url }}
+        run: |
+          if [ -z "$DRAFT_ID" ] || [ -z "$PORTRAIT_URL" ] || [ -z "$AUDIO_URL" ]; then
+            echo "::error ::missing required input"
+            exit 2
+          fi
+          case "$PORTRAIT_URL" in https://*) ;; *) echo "::error ::portrait_url must be HTTPS"; exit 2;; esac
+          case "$AUDIO_URL"    in https://*) ;; *) echo "::error ::audio_url must be HTTPS";    exit 2;; esac
+          # Reject anything that looks like a path-traversal attempt.
+          case "$DRAFT_ID" in *..*|*/*|*$'\n'*) echo "::error ::invalid draft_id"; exit 2;; esac
+          echo "inputs OK"
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install ffmpeg + system deps
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg libsndfile1
+          ffmpeg -version | head -1
+
+      # SadTalker pulls in torch (~700MB) + librosa + opencv. Caching
+      # the pip wheel directory saves ~3 minutes per run.
+      - name: Cache pip wheels
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-sadtalker-py310-v2-${{ hashFiles('scripts/sadtalker_runner.py') }}
+          restore-keys: |
+            pip-sadtalker-py310-v2-
+
+      # SadTalker checkpoints are ~3GB total (face detection + audio2pose
+      # + audio2exp + face renderer + gfpgan enhancer). They never change
+      # so a permanent cache key works fine. First run downloads in ~5min,
+      # cached runs restore in ~30s.
+      - name: Cache SadTalker checkpoints
+        id: ckpt-cache
+        uses: actions/cache@v4
+        with:
+          path: sadtalker-checkpoints
+          key: sadtalker-ckpts-v1
+
+      - name: Clone SadTalker (pinned commit for reproducibility)
+        run: |
+          if [ ! -d sadtalker-src ]; then
+            git clone --depth 1 https://github.com/OpenTalker/SadTalker.git sadtalker-src
+            cd sadtalker-src
+            # Pin to the last known-good commit (2024-02). Bumping this
+            # requires re-testing the runner script.
+            git fetch --depth 50 origin cd4c0465ae0b54a6f85af57f5c65fec9fe39c9d9 || true
+            git checkout cd4c0465ae0b54a6f85af57f5c65fec9fe39c9d9 || echo "pinned commit not reachable, using HEAD"
+          fi
+          ls -la sadtalker-src/ | head
+
+      # Install torch CPU-only first (saves bandwidth — the default
+      # install pulls the CUDA build). Then SadTalker's requirements.
+      - name: Install Python deps
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu \
+            "torch==2.0.1+cpu" "torchvision==0.15.2+cpu" "torchaudio==2.0.2+cpu"
+          # SadTalker's requirements have some pins that fight with modern
+          # numpy/scipy; install the minimal set we actually need.
+          python -m pip install \
+            "numpy==1.23.5" \
+            "scipy>=1.10" \
+            "librosa==0.10.0.post2" \
+            "imageio==2.31.6" "imageio-ffmpeg==0.4.9" \
+            "opencv-python-headless==4.8.1.78" \
+            "tqdm" "yacs==0.1.8" "kornia==0.6.8" "pydub==0.25.1" \
+            "face_alignment==1.3.5" \
+            "joblib==1.3.2" \
+            "safetensors"
+          # gfpgan face enhancer (drag in basicsr + facexlib)
+          python -m pip install "gfpgan==1.3.8" "basicsr==1.4.2" "facexlib==0.3.0"
+          # Stdlib doesn't ship urllib3 + nice progress; tiny request helper.
+          python -m pip install "requests>=2.31"
+
+      - name: Download SadTalker checkpoints (if not cached)
+        if: steps.ckpt-cache.outputs.cache-hit != 'true'
+        run: |
+          python scripts/sadtalker_runner.py download-checkpoints \
+            --dest sadtalker-checkpoints
+
+      - name: Run SadTalker inference
+        env:
+          PORTRAIT_URL: ${{ inputs.portrait_url }}
+          AUDIO_URL: ${{ inputs.audio_url }}
+          DRAFT_ID: ${{ inputs.draft_id }}
+        run: |
+          python scripts/sadtalker_runner.py render \
+            --portrait-url "$PORTRAIT_URL" \
+            --audio-url "$AUDIO_URL" \
+            --draft-id "$DRAFT_ID" \
+            --sadtalker-src ./sadtalker-src \
+            --checkpoints ./sadtalker-checkpoints \
+            --out-dir ./out
+
+      - name: Verify result MP4 exists
+        run: |
+          if [ ! -f ./out/avatar.mp4 ]; then
+            echo "::error ::SadTalker did not produce ./out/avatar.mp4"
+            exit 1
+          fi
+          ls -lh ./out/avatar.mp4
+
+      # Single deterministic artifact name keyed on draft_id. The caller
+      # uses GET /repos/.../runs/<id>/artifacts to find it, then downloads
+      # the zip, extracts avatar.mp4, and uploads to Vercel Blob.
+      - name: Upload avatar artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: avatar-${{ inputs.draft_id }}
+          path: ./out/avatar.mp4
+          retention-days: 7
+          if-no-files-found: error
+          compression-level: 0
+
+      - name: Summary
+        if: always()
+        env:
+          DRAFT_ID: ${{ inputs.draft_id }}
+        run: |
+          echo "## Avatar render — draft \`$DRAFT_ID\`" >> $GITHUB_STEP_SUMMARY
+          if [ -f ./out/avatar.mp4 ]; then
+            SIZE=$(stat -c%s ./out/avatar.mp4)
+            DURATION=$(ffprobe -v error -show_entries format=duration -of default=nw=1:nk=1 ./out/avatar.mp4 2>/dev/null | head -1)
+            echo "**Artifact:** \`avatar-$DRAFT_ID\` (${SIZE} bytes, duration ${DURATION}s)" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Caller (lib/social/avatar.ts) downloads via GH artifacts API." >> $GITHUB_STEP_SUMMARY
+          else
+            echo ":warning: No avatar.mp4 produced — see step logs above." >> $GITHUB_STEP_SUMMARY
+          fi
