@@ -26,12 +26,23 @@ import { auth } from "./auth";
 import { isBasicAuthEnabled } from "@/lib/admin/auth";
 import type { Role } from "./roles";
 
+const BOOTSTRAP_ADMIN_EMAILS = (process.env.BOOTSTRAP_ADMIN_EMAILS ?? "")
+  .split(",")
+  .map((e) => e.trim().toLowerCase())
+  .filter((e) => e.length > 0);
+
 export async function requireRolePage(required: Role): Promise<ReactElement | null> {
   const session = await auth();
   const roles = session?.user?.roles ?? [];
 
   // If the user has the required role we're done. Admin trumps everything.
   if (roles.includes(required) || roles.includes("admin")) return null;
+
+  // Bootstrap-admin email fallback. Same logic + same env var as the edge
+  // middleware. Covers the case where the user_roles row exists in the DB
+  // but didn't make it onto the JWT cookie (e.g. first-sign-in race).
+  const email = (session?.user?.email ?? "").toLowerCase();
+  if (email && BOOTSTRAP_ADMIN_EMAILS.includes(email)) return null;
 
   // Basic-auth fallback path: the middleware has already enforced creds and
   // let the request through. The session is empty here because Basic-auth

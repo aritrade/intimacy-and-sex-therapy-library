@@ -19,6 +19,25 @@ import { adminAuthCheck } from "@/lib/admin/auth";
 
 const { auth } = NextAuth(edgeAuthConfig);
 
+/**
+ * Bootstrap-admin allowlist parsed at edge-bundle build time. Anyone in this
+ * list who is signed in with a verified email is treated as an admin even if
+ * the user_roles row hasn't propagated to their JWT cookie yet.
+ *
+ * Why: the canonical path is JWT.roles includes "admin", populated by the
+ * Node-runtime jwt() callback at sign-in. In practice that propagation has
+ * been flaky for bootstrap users (cookie re-signing race / edge cookie
+ * scope), and the failure mode locks the only operator out of /admin. The
+ * email-allowlist gate is functionally identical to the role check (same
+ * BOOTSTRAP_ADMIN_EMAILS env var that the jwt() callback already trusts) but
+ * doesn't require any DB round-trip OR successful role propagation — Auth.js
+ * always stamps the verified email onto the JWT.
+ */
+const BOOTSTRAP_ADMIN_EMAILS = (process.env.BOOTSTRAP_ADMIN_EMAILS ?? "")
+  .split(",")
+  .map((e) => e.trim().toLowerCase())
+  .filter((e) => e.length > 0);
+
 export default auth((req) => {
   const adminRoute =
     req.nextUrl.pathname.startsWith("/admin") ||
@@ -28,6 +47,9 @@ export default auth((req) => {
 
   const roles = req.auth?.user?.roles;
   if (Array.isArray(roles) && roles.includes("admin")) return NextResponse.next();
+
+  const email = (req.auth?.user?.email ?? "").toLowerCase();
+  if (email && BOOTSTRAP_ADMIN_EMAILS.includes(email)) return NextResponse.next();
 
   const basicDenial = adminAuthCheck(req);
   if (basicDenial) return basicDenial;
