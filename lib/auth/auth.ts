@@ -13,7 +13,7 @@
 
 import NextAuth, { type DefaultSession } from "next-auth";
 import { DrizzleAdapter } from "@auth/drizzle-adapter";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { db, getDbInstance } from "@/lib/db/client";
 import {
   accounts,
@@ -66,22 +66,24 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   callbacks: {
     ...edgeAuthConfig.callbacks,
     async jwt({ token, user }) {
-      if (user?.id && process.env.DATABASE_URL) {
-        token.sub = user.id;
+      // Determine the userId we're working with. On first sign-in, `user` is
+      // populated; on every subsequent refresh `user` is undefined and we
+      // fall back to `token.sub`. Refreshing roles on every invocation (not
+      // just first sign-in) means role grants/revocations take effect on the
+      // next request without requiring sign-out, AND any race in the
+      // bootstrap insert self-heals.
+      const userId = (user?.id as string | undefined) ?? (token.sub as string | undefined);
 
-        // Bootstrap admin: if this user's email is in the allowlist AND they
-        // don't already have the admin role, stamp it. Idempotent — the
-        // composite primary key (userId, role) makes the second insert a
-        // no-op via ON CONFLICT.
-        const email = (user.email ?? "").toLowerCase();
-        if (email && BOOTSTRAP_ADMIN_EMAILS.includes(email)) {
-          try {
-            const existingAdmin = await db
-              .select({ role: userRoles.role })
-              .from(userRoles)
-              .where(and(eq(userRoles.userId, user.id), eq(userRoles.role, "admin")))
-              .limit(1);
-            if (existingAdmin.length === 0) {
+      if (userId && process.env.DATABASE_URL) {
+        if (user?.id) token.sub = user.id;
+
+        // Bootstrap admin — only attempt the insert on first sign-in (when
+        // `user` is present); on refresh calls we just re-read the existing
+        // row below. Idempotent.
+        if (user?.id) {
+          const email = (user.email ?? "").toLowerCase();
+          if (email && BOOTSTRAP_ADMIN_EMAILS.includes(email)) {
+            try {
               await db
                 .insert(userRoles)
                 .values({ userId: user.id, role: "admin", grantedBy: user.id })
@@ -91,18 +93,24 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
                 action: "role_bootstrap_admin",
                 meta: { source: "BOOTSTRAP_ADMIN_EMAILS" },
               });
+            } catch {
+              // Swallow: a transient DB failure should not lock the user out.
             }
-          } catch {
-            // Swallow: a transient DB failure should not lock the user out;
-            // they'll retry the sign-in and get the role then.
           }
         }
 
-        const rows = await db
-          .select({ role: userRoles.role })
-          .from(userRoles)
-          .where(eq(userRoles.userId, user.id));
-        (token as { roles?: string[] }).roles = rows.map((r) => r.role);
+        // Always re-read roles when we have a userId. This is the single
+        // source of truth for what gets written to the JWT.
+        try {
+          const rows = await db
+            .select({ role: userRoles.role })
+            .from(userRoles)
+            .where(eq(userRoles.userId, userId));
+          (token as { roles?: string[] }).roles = rows.map((r) => r.role);
+        } catch {
+          // DB blip — keep whatever roles the token already had so we don't
+          // accidentally demote an admin mid-session.
+        }
       }
       const t = token as { roles?: string[] };
       if (!t.roles || t.roles.length === 0) t.roles = ["user"];
