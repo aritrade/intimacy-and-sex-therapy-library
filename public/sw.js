@@ -3,7 +3,7 @@
  * and we never want to put plaintext conversations into the SW cache.
  */
 
-const CACHE = "istl-shell-v2";
+const CACHE = "istl-shell-v3";
 const SHELL = ["/", "/glossary", "/myths", "/about/privacy", "/about/model", "/manifest.webmanifest", "/icon.svg"];
 
 self.addEventListener("install", (event) => {
@@ -23,9 +23,27 @@ self.addEventListener("activate", (event) => {
 });
 
 self.addEventListener("fetch", (event) => {
+  // Only intercept GETs. Anything else (POST/PUT/etc) must always go to the
+  // network without SW involvement.
+  if (event.request.method !== "GET") return;
+
   const url = new URL(event.request.url);
-  // Never serve cached /api or /chat or /companion. AI surfaces and APIs must
-  // be live.
+
+  // Skip cross-origin requests entirely. The shell only caches same-origin
+  // assets; intercepting third-party requests (e.g. Vercel Blob media) just
+  // creates CSP / range-request headaches with no benefit.
+  if (url.origin !== self.location.origin) return;
+
+  // Admin console is online-only; never cache, never intercept. Avoids
+  // service-worker MITM'ing video <src> requests, draft mutations, etc.
+  if (url.pathname.startsWith("/admin")) return;
+
+  // Range requests (HTML5 video seeking) can't be served from Cache API
+  // because the cache doesn't honour Range headers. Let them through.
+  if (event.request.headers.has("range")) return;
+
+  // Never serve cached /api or /chat or /companion. AI surfaces and APIs
+  // must be live.
   if (
     url.pathname.startsWith("/api/") ||
     url.pathname.startsWith("/chat") ||
@@ -33,6 +51,7 @@ self.addEventListener("fetch", (event) => {
   ) {
     return;
   }
+
   // Network-first for HTML; cache-first for static.
   if (event.request.mode === "navigate") {
     event.respondWith(

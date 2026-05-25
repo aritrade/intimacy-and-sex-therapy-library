@@ -11,6 +11,13 @@ const umamiHost = process.env.NEXT_PUBLIC_UMAMI_HOST || "";
 
 const ANALYTICS_HOSTS = [plausibleHost, umamiHost].filter(Boolean).join(" ");
 
+// Hosts the admin console needs to fetch media from (Vercel Blob storage,
+// where rendered videos/voiceovers are uploaded). We list the public sub-
+// domain explicitly so the global CSP stays tight for the public site.
+const BLOB_HOSTS = [
+  "https://*.public.blob.vercel-storage.com",
+].join(" ");
+
 // Embeddable players we trust enough to iframe. No arbitrary HTML — only the
 // official privacy-friendly endpoints. Mirrored in the resource detail page
 // so a developer adding a new provider has to update both places.
@@ -29,7 +36,11 @@ const GLOBAL_CSP = [
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob: https:",
   "media-src 'self' blob: https:",
-  `connect-src 'self' ${ANALYTICS_HOSTS}`.trim(),
+  // Blob host needed so the admin video preview + service worker can fetch
+  // rendered MP4s. `media-src` alone isn't enough — when the SW intercepts a
+  // <video> request and re-issues it via fetch(), the connect-src directive
+  // applies, not media-src.
+  `connect-src 'self' ${ANALYTICS_HOSTS} ${BLOB_HOSTS}`.trim(),
   "font-src 'self' data:",
   `frame-src 'self' ${EMBED_FRAME_HOSTS}`,
   "frame-ancestors 'none'",
