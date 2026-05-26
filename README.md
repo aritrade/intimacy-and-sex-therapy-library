@@ -1,12 +1,32 @@
-# Sex Therapy Library
+# Intimacy & Sex Therapy Library
 
-A clinician-reviewed, India-aware learning platform on sex therapy + Sahay,
-an end-to-end-encrypted AI companion. Built with Next.js 14, Postgres +
-pgvector, Anthropic Claude, OpenAI embeddings, Auth.js v5, and Remotion.
+An evidence-grounded, clinician-reviewed learning platform on sex therapy —
+plus an autonomous short-form video engine that generates, renders, and
+publishes Reels / Shorts to Instagram, YouTube, and Facebook with a
+human-in-the-loop approval gate.
 
 > **Educational. Not medical advice. Not a licensed therapist.** This site
 > discusses sexuality and intimate relationships in clinical detail and is
 > for adults (18+).
+
+---
+
+## Live surfaces
+
+| Surface          | URL                                                          |
+| ---------------- | ------------------------------------------------------------ |
+| Website          | https://intimacy-and-sex-therapy-library.vercel.app          |
+| YouTube channel  | https://www.youtube.com/@IntimacySexTherapyLibrary           |
+| Instagram        | https://www.instagram.com/intimacylibrary/                   |
+| Facebook Page    | https://www.facebook.com/profile.php?id=61590557572787       |
+
+Sample published Shorts (smoke tests from the autonomous engine):
+
+| Topic                                                | YouTube                                  | Instagram (via [@intimacylibrary](https://www.instagram.com/intimacylibrary/)) |
+| ---------------------------------------------------- | ---------------------------------------- | ------------------------------------------------------------------------------ |
+| Polyamory / ENM / swinging — vocabulary, not advice  | https://youtube.com/shorts/FeXbTa4YLRs   | Reel id `18085303037625729`                                                    |
+| What sex therapy actually involves (long-form essay) | https://youtube.com/watch?v=UxofNWtXElg  | Reel id `18030468374804717`                                                    |
+| Window of tolerance for trauma survivors (Hinglish)  | https://youtube.com/shorts/u3ViwdWCiew   | Reel id `18213398122327741`                                                    |
 
 ---
 
@@ -17,20 +37,76 @@ pgvector, Anthropic Claude, OpenAI embeddings, Auth.js v5, and Remotion.
   universities). No influencers, no anonymous blogs. See
   [`lib/ingest/allowlist.ts`](lib/ingest/allowlist.ts).
 - **No rehosting of copyrighted material.** Open-access full text where
-  licensed (PMC OA, CC-BY-*); for everything else: metadata, curator notes,
-  short fair-use quotes, deep links to authorised publishers / library
-  lending. License gates enforced in the ingestion pipeline.
-- **Content-free observability.** No log line, audit row, crisis event, or
-  metric ever contains a user prompt, model reply, vault transcript,
+  licensed (PMC OA, CC-BY-*); for everything else: metadata, curator
+  notes, short fair-use quotes, deep links to authorised publishers /
+  library lending.
+- **Content-free observability.** No log line, audit row, crisis event,
+  or metric ever contains a user prompt, model reply, vault transcript,
   assessment answer, or PII. The single chokepoint is
   [`lib/observability/scrub.ts`](lib/observability/scrub.ts).
 - **Sahay is a companion, not a therapist.** Every session opens with the
-  disclosure; crisis routing is mandatory; the model card explains what it
-  refuses and why.
-- **Nothing auto-publishes.** Short-form video drafts require both
-  clinician AND editor approval AND a human clicking publish.
+  disclosure; crisis routing is mandatory; the model card explains what
+  it refuses and why.
+- **Nothing auto-publishes.** Every short-form video draft requires BOTH
+  clinician AND editor approval AND a human clicking publish (or
+  setting `scheduled_at`).
 - **DPDP Act 2023 + GDPR baked in.** Right-to-erasure cascades across
   every per-user table; consent is granular and revocable.
+
+---
+
+## The autonomous content engine
+
+This is what's new since the last README revision. Three crons run
+end-to-end without any local machine in the loop:
+
+```
+05:00 IST  daily-generate (Vercel cron)
+           ├─ Picks 3 briefs from CONTENT_BRIEFS (2 short EN/Hinglish + 1 long EN)
+           └─ Calls Groq Llama-3 to write the script; inserts as `script_draft`
+
+05:53 IST  render-due (GitHub Actions cron at :23 UTC)
+           ├─ Polls Neon for any (script_draft|clinician_reviewed) row with NULL videoUrl
+           ├─ Renders MP4 via Remotion + Microsoft Edge TTS (free) on the GH runner
+           ├─ Composes a Ken-Burns reel from Pexels/Pixabay stock photos
+           └─ Uploads to Vercel Blob, stamps the draft with the public HTTPS URL
+
+Any hour at :37  publish-due (GitHub Actions cron at :07 UTC)
+           ├─ Pulls every editor_reviewed draft whose scheduled_at has passed
+           ├─ Fans out to Instagram Reels + YouTube Shorts + Facebook Page Reels
+           └─ Records platform post IDs back on the row, status -> "posted"
+```
+
+Operator's daily ritual (5–10 min, **any browser, any device**):
+
+1. Open `/admin/queue` → 3 cards already have video previews attached.
+2. Tap **Approve clinician** → **Approve editor** → **Publish to IG + YT + FB**.
+3. (Optional) Set `scheduled_at` in the Neon web console for evening posting.
+
+The runbook walks through the rare manual paths in
+[`RUNBOOK-CONTENT-ENGINE.md`](RUNBOOK-CONTENT-ENGINE.md), including the
+weekly Sunday OAuth refresh ritual that goes away once the Google
+Cloud OAuth app is moved to "In Production".
+
+---
+
+## Brand kit
+
+Located at [`public/brand/`](public/brand/). Source SVGs + a one-shot
+rasteriser:
+
+- [`logo.svg`](public/brand/logo.svg) — circular gradient badge with
+  open-book + heart accent.
+- [`banner.svg`](public/brand/banner.svg) — Facebook Page cover
+  (1640×856).
+- [`banner-16x9.svg`](public/brand/banner-16x9.svg) — YouTube channel
+  banner (2048×1152).
+- [`scripts/render-brand-assets.ts`](scripts/render-brand-assets.ts) —
+  rasterises everything to platform-spec PNGs in
+  [`public/brand/exports/`](public/brand/exports/) — IG profile,
+  YouTube channel icon, FB profile, both banners, PWA icon, favicon.
+
+Re-run after any SVG edit: `npx tsx scripts/render-brand-assets.ts`.
 
 ---
 
@@ -39,8 +115,8 @@ pgvector, Anthropic Claude, OpenAI embeddings, Auth.js v5, and Remotion.
 ### Public surfaces
 
 | Route                     | What it is                                                                       |
-|---------------------------|----------------------------------------------------------------------------------|
-| `/`                       | Landing + age gate (cookie-persisted)                                            |
+| ------------------------- | -------------------------------------------------------------------------------- |
+| `/`                       | Landing + age gate (cookie-persisted) + email subscriber form                    |
 | `/catalog`                | Faceted catalog with topic + level + license filters                             |
 | `/library`                | PDF library with `react-pdf` viewer + ask-the-doc                                |
 | `/paths`                  | Learning paths (couples-reset, sexless-marriage, anxiety-ed, lgbtq-affirming)    |
@@ -49,7 +125,7 @@ pgvector, Anthropic Claude, OpenAI embeddings, Auth.js v5, and Remotion.
 | `/decide`, `/worksheets`  | Decision aid + clinician-friendly worksheets                                     |
 | `/clinicians`             | Directory of vetted Indian sex therapists with regional filters                  |
 | `/chat`                   | Library citation chatbot (RAG with hybrid BM25 + pgvector)                       |
-| `/companion`              | Sahay AI companion (3 confidentiality modes, hi/en/hinglish)                     |
+| `/companion`              | Sahay AI companion (3 confidentiality modes, hi/en/hinglish)                    |
 | `/about/privacy`          | Privacy notice (DPDP + GDPR)                                                     |
 | `/about/model`            | Model card with refusal categories + eval results                                |
 | `/about/clinical-board`   | Clinical advisory board members                                                  |
@@ -58,37 +134,51 @@ pgvector, Anthropic Claude, OpenAI embeddings, Auth.js v5, and Remotion.
 
 ### Admin surfaces (gated)
 
-| Route                          | Role          | What it is                                                |
-|--------------------------------|---------------|-----------------------------------------------------------|
-| `/admin`                       | admin         | Operations dashboard with metrics + takedown alerts       |
-| `/admin/drafts`                | admin         | Draft queue with status filter chips                      |
-| `/admin/drafts/[id]`           | clin/edit/adm | Parsed-section review console + structured request-changes |
-| `/admin/users`                 | admin         | User-role management (promote/demote, last-admin rail)    |
+| Route                          | Role          | What it is                                                                  |
+| ------------------------------ | ------------- | --------------------------------------------------------------------------- |
+| `/admin`                       | admin         | Operations dashboard with metrics + takedown alerts                         |
+| `/admin/queue`                 | admin         | Three-lane queue (clinician / editor / publish). Inline render + re-render. |
+| `/admin/drafts`                | admin         | Draft queue with status filter chips                                        |
+| `/admin/drafts/[id]`           | clin/edit/adm | Parsed-section review + structured request-changes                          |
+| `/admin/proposals`             | admin         | Link-health / freshness / discovery proposals from the sync agents          |
+| `/admin/users`                 | admin         | User-role management (promote / demote, last-admin rail)                    |
 
 ### API surfaces
 
-| Route                                          | Public? | Notes                                              |
-|------------------------------------------------|---------|----------------------------------------------------|
-| `/api/chat`, `/api/companion/chat`             | yes     | Stream + crisis check + content-free logging      |
-| `/api/search`                                  | yes     | Hybrid retriever (BM25 + cosine via RRF)           |
-| `/api/health`, `/api/ready`                    | yes     | Probes — same logic as `/status`                  |
-| `/api/account/{forget,assessment-results,...}` | session | Per-user persistence + right-to-erasure            |
-| `/api/admin/*`                                 | admin   | Drafts CRUD, approve, publish, request-changes    |
-| `/api/admin/roles`                             | admin   | Promote / demote, last-admin rail                  |
-| `/api/admin/post-metrics/poll`                 | admin   | Manual trigger of the engagement poller           |
-| `/api/cron/post-metrics-poll`                  | cron    | Vercel cron entry, gated by `CRON_SECRET`         |
+| Route                                          | Public? | Notes                                                                             |
+| ---------------------------------------------- | ------- | --------------------------------------------------------------------------------- |
+| `/api/chat`, `/api/companion/chat`             | yes     | Stream + crisis check + content-free logging                                      |
+| `/api/search`                                  | yes     | Hybrid retriever (BM25 + cosine via RRF)                                          |
+| `/api/health`, `/api/ready`                    | yes     | Probes — same logic as `/status`                                                  |
+| `/api/account/{forget,assessment-results,...}` | session | Per-user persistence + right-to-erasure                                           |
+| `/api/admin/drafts/[id]/render`                | admin   | Dispatches the GH Actions `render-due` workflow for a single draft                |
+| `/api/admin/drafts/[id]/approve`               | admin   | Clinician / editor approval transitions                                           |
+| `/api/admin/drafts/[id]/publish`               | admin   | Fans out to Instagram + YouTube + Facebook (+ LinkedIn + X best-effort)           |
+| `/api/admin/drafts/[id]/request-changes`       | admin   | Structured feedback row                                                           |
+| `/api/admin/roles`                             | admin   | Promote / demote, last-admin rail                                                 |
+| `/api/admin/post-metrics/poll`                 | admin   | Manual trigger of the engagement poller                                           |
+| `/api/cron/daily-content-sync`                 | cron    | Vercel cron (03:00 IST) — link health + freshness + discovery agents              |
+| `/api/cron/daily-generate`                     | cron    | Vercel cron (05:00 IST) — 3 fresh script_draft rows                               |
+| `/api/cron/publish-due`                        | cron    | Pinged hourly by GH Actions `publish-due.yml`                                     |
+| `/api/cron/post-metrics-poll`                  | cron    | Vercel cron (Mon 11:30 IST) — pulls IG + YT engagement                            |
 
 ### Background jobs
 
-- **Weekly post-metrics poll** (`vercel.json` cron, Mondays 06:00 UTC) — pulls
-  Instagram + YouTube engagement, persists to `post_metrics`, detects
-  takedowns and surfaces them on the admin dashboard. Local: `npm run
-  social:pull-metrics`.
-- **Nightly adversarial eval** (`.github/workflows/eval-nightly.yml`) — runs
-  the eval harness against the prompt set; opens an issue if any required
-  threshold regresses.
-- **Lighthouse CI** (`.github/workflows/lighthouse.yml`) — performance +
-  accessibility + best-practices + SEO assertions on every PR.
+- **Vercel cron** — daily content sync (03:00 IST), daily script
+  generation (05:00 IST), weekly metrics poll (Mon 11:30 IST). See
+  [`vercel.json`](vercel.json).
+- **GitHub Actions cron** —
+  [`render-due.yml`](.github/workflows/render-due.yml) hourly at :23
+  UTC (renders un-rendered drafts on a free GH runner; Chromium + ffmpeg
+  cached between runs), and
+  [`publish-due.yml`](.github/workflows/publish-due.yml) hourly at :07
+  UTC (pings the publish-due endpoint with `CRON_SECRET`).
+- **Nightly adversarial eval** —
+  [`eval-nightly.yml`](.github/workflows/eval-nightly.yml) runs the eval
+  harness; opens an issue if any required threshold regresses.
+- **Lighthouse CI** — [`lighthouse.yml`](.github/workflows/lighthouse.yml)
+  performance + accessibility + best-practices + SEO assertions on
+  every PR.
 
 ---
 
@@ -96,19 +186,26 @@ pgvector, Anthropic Claude, OpenAI embeddings, Auth.js v5, and Remotion.
 
 ```
                      ┌────────────────────────┐
-   Public users ───▶ │  Next.js (Vercel/bom1) │ ◀── Vercel Cron
-                     │  - middleware role gate│
-                     │  - server components   │
-                     └─────────┬──────────────┘
+   Public users ───▶ │  Next.js (Vercel/bom1) │ ◀── Vercel Cron (3 jobs)
+                     │  - middleware role gate│      (daily-generate,
+                     │  - server components   │       daily-content-sync,
+                     └─────────┬──────────────┘       post-metrics-poll)
                                │
             ┌──────────────────┼──────────────────┐
             ▼                  ▼                  ▼
-      Anthropic Claude    OpenAI Embeddings   Postgres+pgvector
-      (gen + Sahay)       (text-embedding-3)  (Neon, bom1)
+      Groq Llama-3        OpenAI Embeddings   Postgres+pgvector
+      Anthropic Claude    (text-embedding-3)  (Neon, bom1)
+      (gen + Sahay)                                │
                                                   │
                                ┌──────────────────┴───────┐
                                ▼                          ▼
                           KMS (AWS|local)         Upstash Redis (rate)
+
+
+   GitHub Actions ───▶  render-due (hourly)   ─▶  Vercel Blob (MP4)
+                        publish-due (hourly)   ─▶  IG Graph API
+                                                  YT Data API v3
+                                                  FB Page Reels API
 ```
 
 Code is grouped by capability, not by HTTP layer:
@@ -116,13 +213,14 @@ Code is grouped by capability, not by HTTP layer:
 ```
 app/                     route handlers + server components
   api/{chat,companion,admin,account,cron,health,ready}/
-  admin/{page,drafts,users}/
+  admin/{queue,drafts,proposals,users}/
   about/, catalog/, library/, paths/, ...
 components/              shared UI primitives + admin/* + safety/*
 lib/
-  ai/                    Anthropic + embeddings + RAG retrievers
+  ai/                    Groq + Anthropic + embeddings + RAG retrievers
   admin/                 stats queries, actor resolver, basic-auth fallback
   auth/                  Auth.js config, role helpers, page guards
+  brand/                 persona, tokens, copy — single source of truth
   compliance/            DPDP / GDPR purposes, consent state
   crypto/                AES-GCM vault, envelope encryption helpers
   db/                    Drizzle schema (one file, every table)
@@ -132,14 +230,27 @@ lib/
   observability/         scrubber, logger, audit + crisis event writers
   safety/                guardrails, crisis resources, refusal templates
   search/                hybrid BM25 + pgvector with RRF
-  social/                script gen, parser, publishers, metrics poller
+  social/                script gen, render pipeline, TTS, publishers
+    publishers/          instagram.ts, youtube.ts, facebook.ts,
+                         linkedin.ts, twitter.ts
+    render.ts            Remotion bundle + selectComposition + renderMedia
+    render-and-persist.ts  shared "load + render + persist" used by CLI,
+                           cron, and admin button
+    speech-plan.ts       segments script into TTS chunks with silences
+    stock-photos.ts      Pexels + Pixabay portrait fetcher
+    stock-clips.ts       Pexels + Pixabay video fetcher
+video-factory/           Remotion compositions (PhotoReel, AvatarReel,
+                         StockReel, LongFormEssay, ShortFormVideo)
+public/brand/            logo.svg + banner SVGs + exports/ PNGs
 drizzle/                 generated migrations + hand-written SQL
 tests/
   unit/                  fast vitest suite (parsers, scrubber, guards, …)
   integration/           ephemeral Dockerised Postgres in CI
   e2e/                   Playwright against the production bundle
-.github/workflows/       ci, eval-nightly, lighthouse, post-metrics
-scripts/                 seed-*, ingest, eval, render-draft, preflight, …
+.github/workflows/       ci, eval-nightly, lighthouse, render-due,
+                         publish-due, avatar-render
+scripts/                 seed-*, ingest, eval, render-draft, render-due,
+                         render-brand-assets, preflight, …
 ```
 
 ---
@@ -149,8 +260,10 @@ scripts/                 seed-*, ingest, eval, render-draft, preflight, …
 ```sh
 npm install
 cp .env.example .env
-# Fill: DATABASE_URL, ANTHROPIC_API_KEY, OPENAI_API_KEY, KMS_LOCAL_MASTER_KEY,
-#       AUTH_SECRET, optionally Google/Resend, BOOTSTRAP_ADMIN_EMAILS, …
+# Fill the required keys: DATABASE_URL, AUTH_SECRET, KMS_LOCAL_MASTER_KEY,
+#   GROQ_API_KEY (or ANTHROPIC_API_KEY), OPENAI_API_KEY,
+#   BOOTSTRAP_ADMIN_EMAILS, ... See .env.example for the full list with
+#   inline docs.
 npm run db:migrate        # drizzle + 0001_indexes + 0002_reviewer_notes
 npm run db:seed-all       # allowlist + tags + board + clinicians + 35 resources
 npm run dev               # http://localhost:3000
@@ -169,39 +282,6 @@ DATABASE_URL=postgresql://postgres:postgres@localhost:5432/sextherapy \
 
 ---
 
-## 60-second reviewer tour
-
-Spin up the production bundle locally:
-
-```sh
-npm run build
-PORT=3100 \
-KMS_PROVIDER=local KMS_LOCAL_MASTER_KEY="$(node -e "console.log(require('crypto').randomBytes(32).toString('base64'))")" \
-ADMIN_BASIC_USER=admin ADMIN_BASIC_PASS=letmein \
-AUTH_SECRET="$(node -e "console.log(require('crypto').randomBytes(32).toString('base64'))")" \
-  npx next start -p 3100
-```
-
-Then click through:
-
-1. **Public posture** — `/` (age gate), `/catalog`, `/paths`, `/library`,
-   `/glossary`, `/myths`, `/assessments` (PHQ-9 anchored).
-2. **Trust** — `/about/privacy`, `/about/model`, `/about/clinical-board`,
-   `/clinicians`, `/status`.
-3. **AI surfaces** — `/chat` (refuses cleanly without `ANTHROPIC_API_KEY`),
-   `/companion` (three confidentiality modes, hi/hinglish toggle).
-4. **Admin** — sign in via `admin` / `letmein` Basic-auth (or via Auth.js
-   if you set `BOOTSTRAP_ADMIN_EMAILS`):
-    - `/admin` — dashboard with metric cards, drafts queue, eval trend,
-      audit log, crisis events, recent posts, takedown alerts.
-    - `/admin/drafts/[id]` (any draft) — parsed-section review with
-      structured request-changes feedback.
-    - `/admin/users` — promote / demote with last-admin safety rail.
-5. **Probes** — `curl :3100/api/ready` and `curl :3100/api/health` return
-   200 / 503 with subsystem detail.
-
----
-
 ## Verification
 
 ```sh
@@ -213,18 +293,22 @@ npm run test:e2e          # builds + serves + runs Playwright
 npm run preflight         # env / DB / KMS / extension sanity check
 ```
 
-CI in `.github/workflows/ci.yml` runs all of the above on every PR;
-`lighthouse.yml` and `eval-nightly.yml` cover performance + adversarial
-correctness on a schedule.
+CI in [`ci.yml`](.github/workflows/ci.yml) runs typecheck + lint +
+unit + integration on every PR.
 
 ---
 
 ## Deployment
 
-See [`DEPLOY.md`](DEPLOY.md) for the full runbook (Neon, Vercel, KMS,
-Auth.js bootstrap, post-deploy verification).
+See [`DEPLOY.md`](DEPLOY.md) for the platform runbook (Neon, Vercel,
+KMS, Auth.js bootstrap) and
+[`RUNBOOK-CONTENT-ENGINE.md`](RUNBOOK-CONTENT-ENGINE.md) for the
+content-engine playbook (Meta + YouTube + GitHub Actions, weekly
+ops, failure-mode triage table).
 
-Phases shipped:
+---
+
+## Project phases
 
 - **Phase 1** scaffold + schema + allowlist + compliance.
 - **Phase 2** ingestion pipeline (PMC, WPATH, WHO), tagger, faceted catalog,
@@ -234,7 +318,7 @@ Phases shipped:
   paths, decision aid, worksheets.
 - **Phase 5** Sahay companion + three confidentiality modes + India-first
   clinician handoff + Hindi/Hinglish.
-- **Phase 6** content factory (Remotion + Sarvam/ElevenLabs/Whisper) +
+- **Phase 6** content factory (Remotion + Edge TTS + Whisper) +
   Instagram/YouTube publishers (human-in-the-loop only).
 - **Phase 7** Auth.js v5 with Drizzle adapter + role schema.
 - **Phase 8** observability, KMS, probes, SEO, preflight, security headers.
@@ -244,5 +328,17 @@ Phases shipped:
 - **Phase 12** i18n parity + admin operations dashboard + public status page.
 - **Phase 13** session-based admin gate, role bootstrap, clinician review
   console with parsed sections + structured request-changes.
-- **Phase 14** post-metrics poller (IG + YouTube) + takedown alerts on the
-  admin dashboard + weekly Vercel cron.
+- **Phase 14** post-metrics poller (IG + YouTube) + takedown alerts on
+  the admin dashboard + weekly Vercel cron.
+- **Phase 15** brand persona (Jenny voice, host badge, logo), Edge TTS
+  segmented synthesis with ffmpeg silence stitching, Ken-Burns
+  PhotoReel composition with Pexels/Pixabay stock photos.
+- **Phase 16** Facebook Page Reels publisher; library-footer auto-append
+  on every IG caption + YT description + FB description; META Page
+  token exchanged for non-expiring long-lived token.
+- **Phase 17 (current)** **Mac-free autonomous operation**: GitHub
+  Actions `render-due` cron renders new drafts on a free GH runner
+  every hour; admin "Render" / "Re-render" pill in the queue triggers
+  the same workflow on demand; full ops pipeline runs from any
+  browser including mobile. Platform-ready brand kit (5 logo PNG
+  sizes + 2 banners) committed to `public/brand/exports/`.
