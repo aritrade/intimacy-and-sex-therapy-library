@@ -20,6 +20,11 @@ import { contentDrafts } from "@/lib/db/schema";
 import { publishInstagramReel, PublisherRefusal } from "@/lib/social/publishers/instagram";
 import { uploadYouTubeShort, YouTubePublisherRefusal } from "@/lib/social/publishers/youtube";
 import {
+  publishFacebookReel,
+  FacebookPublisherRefusal,
+  isFacebookConfigured,
+} from "@/lib/social/publishers/facebook";
+import {
   publishLinkedInPost,
   LinkedInPublisherRefusal,
   isLinkedInConfigured,
@@ -37,9 +42,16 @@ export type PublishResult = {
   failures: Array<{ platform: string; reason: string; detail?: string }>;
 };
 
+export type Platform =
+  | "instagram"
+  | "youtube"
+  | "facebook"
+  | "linkedin"
+  | "twitter";
+
 export type PublishInput = {
   draftId: string;
-  platforms: ("instagram" | "youtube" | "linkedin" | "twitter")[];
+  platforms: Platform[];
 };
 
 export async function publishDraft(input: PublishInput): Promise<PublishResult> {
@@ -105,6 +117,21 @@ export async function publishDraft(input: PublishInput): Promise<PublishResult> 
       }
     }
   }
+  if (input.platforms.includes("facebook") && isFacebookConfigured()) {
+    try {
+      const r = await publishFacebookReel({
+        videoUrl: draft.videoUrl,
+        description: appendLibraryFooter(extractCaption(draft.scriptMd ?? "")),
+      });
+      platformPostIds.facebook = r.postId;
+    } catch (e) {
+      if (e instanceof FacebookPublisherRefusal) {
+        failures.push({ platform: "facebook", reason: e.reason, detail: e.detail });
+      } else {
+        failures.push({ platform: "facebook", reason: "exception", detail: String((e as Error).message) });
+      }
+    }
+  }
 
   // LinkedIn + Twitter cross-post the same script as a text update.
   // We never error if these aren't configured — they're additive.
@@ -136,12 +163,14 @@ export async function publishDraft(input: PublishInput): Promise<PublishResult> 
     }
   }
 
-  // Only the *primary* platforms (IG / YT) determine whether the
+  // Only the *primary* platforms (IG / YT / FB) determine whether the
   // overall publish flow counts as a success. LinkedIn / Twitter are
   // best-effort cross-posts; their failure shouldn't flip the draft
   // to "failed".
   const primarySuccess =
-    !!platformPostIds.instagram || !!platformPostIds.youtube;
+    !!platformPostIds.instagram ||
+    !!platformPostIds.youtube ||
+    !!platformPostIds.facebook;
   const anySuccess = primarySuccess || Object.keys(platformPostIds).length > 0;
   await db
     .update(contentDrafts)

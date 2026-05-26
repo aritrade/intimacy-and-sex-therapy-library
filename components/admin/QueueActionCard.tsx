@@ -28,7 +28,7 @@ const LANE_ACTION: Record<string, { label: string; loading: string; ok: string }
     ok: "Approved → publish",
   },
   publish: {
-    label: "Publish to IG + YT",
+    label: "Publish to IG + YT + FB",
     loading: "Publishing…",
     ok: "Published",
   },
@@ -51,7 +51,7 @@ export function QueueActionCard({ lane, draft }: { lane: string; draft: Draft })
       if (lane === "publish") {
         if (
           !window.confirm(
-            "Publish this to Instagram + YouTube? This is irreversible — IG/YT do not allow scheduled deletion.",
+            "Publish this to Instagram + YouTube + Facebook? This is irreversible — IG/YT/FB do not allow scheduled deletion.",
           )
         ) {
           setBusy(false);
@@ -61,7 +61,7 @@ export function QueueActionCard({ lane, draft }: { lane: string; draft: Draft })
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            platforms: ["instagram", "youtube", "linkedin", "twitter"],
+            platforms: ["instagram", "youtube", "facebook", "linkedin", "twitter"],
             iAmTheReviewerAndIWantToPublish: true,
           }),
         });

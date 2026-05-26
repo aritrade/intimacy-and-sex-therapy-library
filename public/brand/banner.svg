@@ -1,0 +1,85 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1640 856"
+     role="img" aria-label="Intimacy and Sex Therapy Library cover banner">
+  <title>Intimacy and Sex Therapy Library</title>
+
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#101115"/>
+      <stop offset="100%" stop-color="#181922"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#8A567E"/>
+      <stop offset="55%" stop-color="#E07A5F"/>
+      <stop offset="100%" stop-color="#479191"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="35%" cy="40%" r="65%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.18"/>
+      <stop offset="60%" stop-color="#FFFFFF" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="1640" height="856" fill="url(#bg)"/>
+
+  <g opacity="0.12" stroke="#F0EBE2" stroke-width="1" fill="none">
+    <line x1="40" y1="80" x2="1600" y2="80"/>
+    <line x1="40" y1="776" x2="1600" y2="776"/>
+  </g>
+
+  <g transform="translate(560, 200)">
+    <circle cx="228" cy="228" r="228" fill="#F8F6F2"/>
+    <circle cx="228" cy="228" r="214" fill="url(#accent)"/>
+    <circle cx="228" cy="228" r="214" fill="url(#glow)"/>
+
+    <g stroke="#FFFFFF" stroke-linejoin="round" stroke-width="6" transform="translate(-28, -28)">
+      <path d="M 252 196 L 252 380 L 162 360 Q 132 354 132 322 L 132 200 Q 132 178 162 174 Q 220 168 252 196 Z"
+            fill="#F8F6F2"/>
+      <path d="M 260 196 L 260 380 L 350 360 Q 380 354 380 322 L 380 200 Q 380 178 350 174 Q 292 168 260 196 Z"
+            fill="#F8F6F2"/>
+    </g>
+
+    <g stroke="#E07A5F" stroke-width="4" stroke-linecap="round" fill="none" opacity="0.85" transform="translate(-28, -28)">
+      <line x1="160" y1="226" x2="232" y2="222"/>
+      <line x1="160" y1="258" x2="232" y2="254"/>
+      <line x1="160" y1="290" x2="232" y2="286"/>
+      <line x1="160" y1="322" x2="216" y2="318"/>
+    </g>
+
+    <g stroke="#479191" stroke-width="4" stroke-linecap="round" fill="none" opacity="0.85" transform="translate(-28, -28)">
+      <line x1="280" y1="222" x2="352" y2="226"/>
+      <line x1="280" y1="254" x2="352" y2="258"/>
+      <line x1="280" y1="286" x2="352" y2="290"/>
+      <line x1="296" y1="318" x2="352" y2="322"/>
+    </g>
+
+    <path d="M 228 126
+             C 216 110 196 110 190 130
+             C 184 150 212 172 228 186
+             C 244 172 272 150 266 130
+             C 260 110 240 110 228 126 Z"
+          fill="#E07A5F"
+          stroke="#F8F6F2"
+          stroke-width="5"
+          stroke-linejoin="round"
+          transform="translate(-28, -28)"/>
+  </g>
+
+  <text x="820" y="708"
+        text-anchor="middle"
+        font-family="Lora, Georgia, serif"
+        font-size="58"
+        font-weight="600"
+        fill="#F0EBE2"
+        letter-spacing="0.5">
+    Intimacy &amp; Sex Therapy Library
+  </text>
+
+  <text x="820" y="762"
+        text-anchor="middle"
+        font-family="Inter, system-ui, sans-serif"
+        font-size="26"
+        font-weight="400"
+        fill="#9E988A"
+        letter-spacing="2">
+    Evidence-grounded.  Clinician-reviewed.  Human-paced.
+  </text>
+</svg>

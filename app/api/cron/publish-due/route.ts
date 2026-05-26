@@ -83,9 +83,10 @@ async function handle(req: Request): Promise<NextResponse> {
       summary.results.push({ draftId: draft.id, ok: false, platforms: [], failureCount: 1 });
       continue;
     }
-    const platforms: ("instagram" | "youtube" | "linkedin" | "twitter")[] = [
+    const platforms: ("instagram" | "youtube" | "facebook" | "linkedin" | "twitter")[] = [
       "instagram",
       "youtube",
+      "facebook",
       "linkedin",
       "twitter",
     ];

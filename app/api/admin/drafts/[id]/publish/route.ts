@@ -13,9 +13,9 @@ export const dynamic = "force-dynamic";
 
 const Body = z.object({
   platforms: z
-    .array(z.enum(["instagram", "youtube", "linkedin", "twitter"]))
+    .array(z.enum(["instagram", "youtube", "facebook", "linkedin", "twitter"]))
     .min(1)
-    .default(["instagram", "youtube", "linkedin", "twitter"]),
+    .default(["instagram", "youtube", "facebook", "linkedin", "twitter"]),
   /**
    * Mandatory final-mile attestation. Defaulted to true here because
    * the queue UI's "Publish" button presents a confirmation dialog at
