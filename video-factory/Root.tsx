@@ -2,6 +2,7 @@ import { Composition } from "remotion";
 import { ShortFormVideo, type ShortFormProps } from "./ShortFormVideo";
 import { StockReel, type StockReelProps } from "./StockReel";
 import { AvatarReel, type AvatarReelProps } from "./AvatarReel";
+import { PhotoReel, type PhotoReelProps } from "./PhotoReel";
 import { LongFormEssay, type LongFormEssayProps } from "./LongFormEssay";
 import { QuoteCarousel, type QuoteCarouselProps } from "./QuoteCarousel";
 
@@ -31,6 +32,13 @@ const sampleAvatar: AvatarReelProps = {
   ...sample,
   scenes: sample.scenes.map((s) => ({ ...s, clips: [] })),
   avatarUrl: null,
+  portraitUrl: null,
+  voiceoverUrl: null,
+};
+
+const samplePhoto: PhotoReelProps = {
+  ...sample,
+  scenes: sample.scenes.map((s) => ({ ...s, photos: [] })),
   portraitUrl: null,
   voiceoverUrl: null,
 };
@@ -102,6 +110,22 @@ export const RemotionRoot: React.FC = () => {
         width={1080}
         height={1920}
         defaultProps={sampleAvatar}
+        calculateMetadata={({ props }) => ({
+          durationInFrames: Math.ceil(props.totalSeconds * FPS),
+        })}
+      />
+
+      {/* 9:16 photo reel — narrator voiceover over a Ken-Burns sequence
+          of stock photos with kinetic captions. The V1 default — works
+          without any paid AI compute and renders fast. */}
+      <Composition
+        id="PhotoReel"
+        component={PhotoReel}
+        durationInFrames={Math.ceil(samplePhoto.totalSeconds * FPS)}
+        fps={FPS}
+        width={1080}
+        height={1920}
+        defaultProps={samplePhoto}
         calculateMetadata={({ props }) => ({
           durationInFrames: Math.ceil(props.totalSeconds * FPS),
         })}

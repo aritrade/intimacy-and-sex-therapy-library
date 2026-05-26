@@ -1,14 +1,14 @@
 /**
  * Render a draft locally to /public/renders/<id>/video.mp4.
  *
- *   npm run render -- <draftId> [--style typography|stock|avatar|long_form_essay]
+ *   npm run render -- <draftId> [--style typography|stock|photo|avatar|long_form_essay]
  *
  * Loads the draft from the DB, parses its scriptMd, runs the full
- * TTS → (optional Replicate avatar) → Remotion → Whisper pipeline,
- * and updates the row with videoUrl, voiceoverUrl, captionsSrt, and
- * status="rendered". Default style is "avatar" which automatically
- * falls back to "stock" if REPLICATE_API_TOKEN is unset or the daily
- * cap is exceeded.
+ * TTS → (optional Replicate avatar / stock photo collage) → Remotion →
+ * Whisper pipeline, and updates the row with videoUrl, voiceoverUrl,
+ * captionsSrt, and status="rendered". Default style is "photo" — narrator
+ * voiceover over a Ken-Burns sequence of stock photos with kinetic
+ * captions. Works on the free tier without any paid AI compute.
  */
 import "dotenv/config";
 import { eq } from "drizzle-orm";
@@ -18,7 +18,7 @@ import { renderDraft, type RenderInput } from "../lib/social/render";
 import type { GeneratedScript } from "../lib/social/script-generator";
 
 type Style = NonNullable<RenderInput["style"]>;
-const KNOWN_STYLES: Style[] = ["typography", "stock", "avatar", "long_form_essay"];
+const KNOWN_STYLES: Style[] = ["typography", "stock", "photo", "avatar", "long_form_essay"];
 
 function parseArgs(argv: string[]): { id?: string; style?: Style } {
   const args: { id?: string; style?: Style } = {};
@@ -41,7 +41,7 @@ function parseArgs(argv: string[]): { id?: string; style?: Style } {
 async function main() {
   const { id, style } = parseArgs(process.argv.slice(2));
   if (!id) {
-    console.error("Usage: npm run render -- <draftId> [--style typography|stock|avatar|long_form_essay]");
+    console.error("Usage: npm run render -- <draftId> [--style typography|stock|photo|avatar|long_form_essay]");
     process.exit(2);
   }
   if (!process.env.DATABASE_URL) {

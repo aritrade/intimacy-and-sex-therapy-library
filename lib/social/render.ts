@@ -20,13 +20,15 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { bundle } from "@remotion/bundler";
 import { renderMedia, selectComposition } from "@remotion/renderer";
-import { synthesize, type TTSResult } from "./tts";
+import { synthesizeSegmented, type TTSResult } from "./tts";
 import { transcribe, wordsToSrt, drift } from "./stt";
 import { scriptToSrt } from "./stt-local";
 import { uploadRenderArtifact } from "./blob-host";
 import { pickClipsForScript } from "./stock-clips";
+import { pickPhotosForScript, type StockPhoto } from "./stock-photos";
 import { generateAvatarVideo, AvatarRefusal } from "./avatar";
 import { NARRATOR } from "../brand/persona";
+import { buildSpeechPlan, speechPlanToPlainText } from "./speech-plan";
 import type { GeneratedScript } from "./script-generator";
 
 export type RenderInput = {
@@ -34,12 +36,19 @@ export type RenderInput = {
   script: GeneratedScript;
   language: "en" | "hi" | "hinglish";
   /**
-   * Visual style. Defaults to "avatar" (talking-head persona). Other
-   * styles are rendered by separate Remotion compositions and the
-   * "avatar" style auto-falls back to "stock" when Replicate fails or
-   * the daily USD cap is exceeded.
+   * Visual style. Defaults to "photo" — narrator voiceover over a
+   * Ken-Burns sequence of stock photos with kinetic captions. Other
+   * styles are rendered by separate Remotion compositions:
+   *   - "typography"      : text-only, animated gradient backdrop
+   *   - "stock"           : portrait stock VIDEOS behind captions
+   *   - "photo"           : portrait stock PHOTOS (Ken-Burns) + captions
+   *   - "avatar"          : talking-head lip-sync + B-roll cutaways
+   *   - "long_form_essay" : 16:9 essay for YouTube
+   * The "avatar" style auto-falls back to a still-portrait treatment
+   * when Replicate / GitHub-Actions providers refuse or hit the daily
+   * USD cap.
    */
-  style?: "typography" | "stock" | "long_form_essay" | "avatar";
+  style?: "typography" | "stock" | "photo" | "long_form_essay" | "avatar";
 };
 
 export type RenderResult = {
@@ -58,27 +67,42 @@ const FPS = 30;
 const COMPOSITION_BY_STYLE: Record<NonNullable<RenderInput["style"]>, string> = {
   typography: "ShortFormVideo",
   stock: "StockReel",
+  photo: "PhotoReel",
   long_form_essay: "LongFormEssay",
   avatar: "AvatarReel",
 };
 
 export async function renderDraft(input: RenderInput): Promise<RenderResult> {
   const { draftId, script, language } = input;
-  // Default style for new drafts is the avatar composition once the
-  // persona portrait is committed and REPLICATE_API_TOKEN is set. The
-  // composition falls back to "stock" automatically below when the
-  // avatar generation step refuses, so this default is safe even
-  // before the operator has configured Replicate.
-  let style: NonNullable<RenderInput["style"]> = input.style ?? "avatar";
+  // Default visual style is "photo" — narrator voiceover over a
+  // Ken-Burns sequence of stock photos. Reasons:
+  //   - works on the free tier (no Replicate, no GH Actions GPU)
+  //   - renders fast (no per-frame video decode)
+  //   - Pexels/Pixabay have abundant 9:16 portrait photos vs. the very
+  //     scarce 9:16 portrait stock VIDEOS the "stock" path depends on
+  //   - documentary motion treatment reads as intentional, not slideshow-y
+  // The "avatar" style is preserved as opt-in for when we eventually
+  // wire a paid lip-sync provider.
+  let style: NonNullable<RenderInput["style"]> = input.style ?? "photo";
   const renderDir = join(process.cwd(), "public", "renders", draftId);
   await mkdir(renderDir, { recursive: true });
 
-  const fullText = [script.hook, ...script.body.map((b) => b.text), script.cta].join(" ");
+  // Build the speech plan — an ordered list of (text, silenceMsAfter)
+  // segments. Segmenting up front is required because Edge TTS's free
+  // WSS endpoint rejects every pause SSML element, so inter-scene gaps
+  // have to be inserted as real silence via ffmpeg between per-segment
+  // synthesis calls. See lib/social/speech-plan.ts for the full rationale.
+  const speechPlan = buildSpeechPlan(script);
+  const plainText = speechPlanToPlainText(speechPlan);
+  const segmentLabels = speechPlan
+    .map((s, i) => `${s.kind}#${i}(${s.silenceMsAfter}ms)`)
+    .join(" ");
+  console.log(`[render] speech plan: ${segmentLabels}`);
 
-  // 1) TTS
+  // 1) TTS — per-segment synthesis + ffmpeg-stitched silence between.
   let tts: TTSResult | null = null;
   try {
-    tts = await synthesize(fullText, language);
+    tts = await synthesizeSegmented(speechPlan, language);
   } catch (e) {
     console.warn("[render] TTS failed:", (e as Error).message);
   }
@@ -134,14 +158,18 @@ export async function renderDraft(input: RenderInput): Promise<RenderResult> {
     }
   }
 
-  // 2.5) Pre-upload the persona portrait so the AvatarReel composition
-  //      can reference it via HTTPS (Remotion's bundler can't fetch
-  //      Next-style /public paths during render). The same URL is also
-  //      what we pass to Replicate as source_image when the lip-sync
-  //      path is available. Cheap idempotent upload — one ~500KB PNG
-  //      per draft.
+  // 2.5) Pre-upload the persona portrait so AvatarReel / PhotoReel can
+  //      reference it via HTTPS (Remotion's bundler can't fetch
+  //      Next-style /public paths during render). For AvatarReel it's
+  //      also what gets passed to Replicate as source_image when the
+  //      lip-sync path is available. PhotoReel uses it as the small
+  //      circular host badge at hook + CTA. Cheap idempotent upload —
+  //      one ~500KB PNG per draft.
   let portraitUrl: string | null = null;
-  if (style === "avatar" && existsSync(NARRATOR.portraitPath)) {
+  if (
+    (style === "avatar" || style === "photo") &&
+    existsSync(NARRATOR.portraitPath)
+  ) {
     try {
       const r = await uploadRenderArtifact(
         NARRATOR.portraitPath,
@@ -152,12 +180,12 @@ export async function renderDraft(input: RenderInput): Promise<RenderResult> {
         portraitUrl = r.url;
       } else {
         console.warn(
-          "[render] portrait not on HTTPS host (BLOB_READ_WRITE_TOKEN unset?); AvatarReel will render the warm-amber backdrop only",
+          "[render] portrait not on HTTPS host (BLOB_READ_WRITE_TOKEN unset?); composition will render without the host badge",
         );
       }
     } catch (e) {
       console.warn(
-        "[render] portrait pre-upload failed; AvatarReel will render the warm-amber backdrop only:",
+        "[render] portrait pre-upload failed; composition will render without the host badge:",
         (e as Error).message,
       );
     }
@@ -202,10 +230,15 @@ export async function renderDraft(input: RenderInput): Promise<RenderResult> {
     }
   }
 
-  // 3) For stock / long-form / avatar styles, fetch B-roll clips per
-  //    scene. Skipped (and the comp falls back to gradient orbs) when
-  //    no Pexels/Pixabay key is configured.
-  let scenesWithClips: Array<{ text: string; seconds: number; title?: string; clips: { url: string; attribution: string | null; width: number; height: number }[] }> = script.body.map((b) => ({
+  // 3a) For stock / long-form / avatar styles, fetch B-roll VIDEO clips
+  //     per scene. Skipped (and the comp falls back to gradient orbs)
+  //     when no Pexels/Pixabay key is configured.
+  let scenesWithClips: Array<{
+    text: string;
+    seconds: number;
+    title?: string;
+    clips: { url: string; attribution: string | null; width: number; height: number }[];
+  }> = script.body.map((b) => ({
     text: b.text,
     seconds: b.seconds,
     clips: [],
@@ -229,20 +262,70 @@ export async function renderDraft(input: RenderInput): Promise<RenderResult> {
     }
   }
 
-  // 4) Pick the composition + override props. The AvatarReel reads
-  //     `avatarUrl` + `portraitUrl`; the typography / stock comps
-  //     ignore them.
-  const compositionInputProps = {
+  // 3b) For the photo style, fetch portrait stock PHOTOS per scene.
+  //     2 photos per body scene gives each photo ~2.5-3s of screen time
+  //     at our standard scene length. 3 felt visually rushed — viewers
+  //     barely registered each image before it crossfaded. 1 felt too
+  //     static. 2 hits the calm-explainer rhythm without going slideshow.
+  let scenesWithPhotos: Array<{
+    text: string;
+    seconds: number;
+    photos: { url: string; attribution: string | null; width: number; height: number }[];
+  }> = script.body.map((b) => ({
+    text: b.text,
+    seconds: b.seconds,
+    photos: [],
+  }));
+  if (style === "photo") {
+    try {
+      const perScenePhotos: StockPhoto[][] = await pickPhotosForScript(script, 2);
+      scenesWithPhotos = script.body.map((b, i) => ({
+        text: b.text,
+        seconds: b.seconds,
+        photos: (perScenePhotos[i] ?? []).map((p) => ({
+          url: p.url,
+          attribution: p.attribution,
+          width: p.width,
+          height: p.height,
+        })),
+      }));
+      const totalPhotos = scenesWithPhotos.reduce((acc, s) => acc + s.photos.length, 0);
+      console.log(
+        `[render] stock photos fetched: ${totalPhotos} across ${scenesWithPhotos.length} scenes`,
+      );
+    } catch (e) {
+      console.warn("[render] stock-photo fetch failed:", (e as Error).message);
+    }
+  }
+
+  // 4) Pick the composition + override props.
+  //     - PhotoReel reads `scenes[].photos` + `portraitUrl`
+  //     - AvatarReel reads `scenes[].clips` + `avatarUrl` + `portraitUrl`
+  //     - StockReel / LongFormEssay read `scenes[].clips`
+  //     - ShortFormVideo ignores both
+  //    We build a discriminated shape so the renderer always sees the
+  //    right field for the chosen composition.
+  const baseProps = {
     hook: script.hook,
-    avatarUrl,
-    portraitUrl,
-    scenes: scenesWithClips,
     cta: script.cta,
     citationLine: script.citationLine,
     language,
     voiceoverUrl: renderVoiceoverUrl,
     totalSeconds,
   };
+  const compositionInputProps =
+    style === "photo"
+      ? {
+          ...baseProps,
+          portraitUrl,
+          scenes: scenesWithPhotos,
+        }
+      : {
+          ...baseProps,
+          avatarUrl,
+          portraitUrl,
+          scenes: scenesWithClips,
+        };
 
   const composition = await selectComposition({
     serveUrl: bundleLocation,
@@ -266,6 +349,8 @@ export async function renderDraft(input: RenderInput): Promise<RenderResult> {
   //    set (catches TTS pronunciation errors); otherwise synthesise SRT
   //    from the script directly. Edge TTS is deterministic, so the
   //    synthetic path is correct for the free-tier flow.
+  //    Drift comparison uses the SSML-stripped plain text — otherwise
+  //    every <break> tag in the source would count as a missed word.
   let captionsSrt: string | null = null;
   let driftScore: number | null = null;
   if (tts) {
@@ -273,14 +358,14 @@ export async function renderDraft(input: RenderInput): Promise<RenderResult> {
       const w = await transcribe(tts.audio, tts.mime);
       if (w) {
         captionsSrt = wordsToSrt(w.words);
-        driftScore = drift(fullText, w.text);
+        driftScore = drift(plainText, w.text);
       }
     } catch (e) {
       console.warn("[render] Whisper failed:", (e as Error).message);
     }
   }
   if (!captionsSrt) {
-    captionsSrt = scriptToSrt(fullText, totalSeconds);
+    captionsSrt = scriptToSrt(plainText, totalSeconds);
   }
 
   // 5) Hoist the rendered MP4 to a publicly fetchable HTTPS URL so
@@ -295,16 +380,36 @@ export async function renderDraft(input: RenderInput): Promise<RenderResult> {
     },
   );
 
+  // Append a per-render cache-buster to the stored URLs. Vercel Blob
+  // serves with `Cache-Control: public, max-age=2592000` (30 days), and
+  // re-renders write back to the same path inside `renders/<draftId>/`,
+  // so browsers (and the admin queue UI) would happily replay a stale
+  // copy of the previous render at the same URL. A query-string version
+  // tag is the cheapest fix: same blob path (idempotent storage), new
+  // cache key (always-fresh fetch).
+  const renderStamp = Date.now();
+  const publicVideoUrl = videoBlob?.url
+    ? appendCacheBuster(videoBlob.url, renderStamp)
+    : `/renders/${draftId}/video.mp4?v=${renderStamp}`;
+  const versionedVoiceoverUrl = publicVoiceoverUrl
+    ? appendCacheBuster(publicVoiceoverUrl, renderStamp)
+    : null;
+
   return {
     videoPath,
-    publicVideoUrl: videoBlob?.url ?? `/renders/${draftId}/video.mp4`,
+    publicVideoUrl,
     voiceoverPath,
-    publicVoiceoverUrl,
+    publicVoiceoverUrl: versionedVoiceoverUrl,
     captionsSrt,
     drift: driftScore,
     totalSeconds,
     blobHost: videoBlob?.hosted ?? "local",
   };
+}
+
+function appendCacheBuster(url: string, stamp: number): string {
+  const sep = url.includes("?") ? "&" : "?";
+  return `${url}${sep}v=${stamp}`;
 }
 
 export function rendersDirExists(): boolean {

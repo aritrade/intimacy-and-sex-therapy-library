@@ -37,14 +37,31 @@ export type Persona = {
   /** TTS settings. */
   tts: {
     /**
-     * Microsoft Edge neural voice id for English. en-US-AvaNeural is a
-     * newer expressive voice tuned for podcast-style delivery, slightly
-     * warmer than the older Aria/Jenny voices the project defaulted to.
+     * Microsoft Edge neural voice id for English. en-US-JennyNeural is the
+     * "warm friendly Cortana" voice — older generation but trained for
+     * conversational delivery, so at -10% rate it holds together far better
+     * than the late-2024 Multilingual voices (Emma/Ava/Cora), which were
+     * trained on tighter narration data and stretch into a robotic register
+     * past -8%. Picked over Emma/Ava in the 2026-05-26 A/B (see
+     * canvases/voice-picker.canvas.tsx). Override via
+     * EDGE_TTS_VOICE_EN_NARRATOR if you want to A/B another voice.
      */
     edgeEnglishVoice: string;
-    /** Indian English fallback. */
+    /**
+     * Indian English voice used when the script locale is `hinglish`
+     * (English with transliterated Hindi words). Brand decision (2026-05-26):
+     * we use ONE narrator voice across every locale that's mostly English,
+     * so this defaults to the same en-US-JennyNeural as edgeEnglishVoice
+     * for brand consistency. The trade-off is that the few transliterated
+     * Hindi words ("pyaar", "ishq", etc.) get pronounced with American
+     * phonemes rather than Indian; that's acceptable given the volume
+     * (one or two words per reel) and the consistency win is bigger.
+     * Override via EDGE_TTS_VOICE_EN_IN_NARRATOR if you ever want to
+     * route hinglish to a true Indian-English voice like en-IN-NeerjaNeural
+     * (more authentic on transliterated Hindi, less consistent brand).
+     */
     edgeIndianEnglishVoice: string;
-    /** Hindi voice when the script locale is hi/hinglish. */
+    /** Hindi voice when the script locale is pure `hi`. */
     edgeHindiVoice: string;
     /**
      * ElevenLabs voice id used when ELEVENLABS_API_KEY is set AND we
@@ -58,6 +75,42 @@ export type Persona = {
      * unhurried + authoritative rather than rushed.
      */
     targetWpm: number;
+    /**
+     * Edge/Azure SSML prosody settings. Applied to the whole voiceover.
+     * Tuned for a "pro trainer / late-night radio host" character:
+     *   - rate slightly under default so each idea has room to land
+     *   - pitch a touch lower for grounded confidence (more than -3st
+     *     starts to sound robotic on Edge neural voices)
+     *   - volume left at default
+     */
+    prosody: {
+      rate: string;
+      pitch: string;
+      volume?: string;
+    };
+    /**
+     * Inline SSML <break time="..."/> durations the script-to-SSML
+     * builder injects at structural boundaries. Tuned for a "let it
+     * land" trainer cadence — viewers process each idea before the
+     * next one starts.
+     */
+    pauses: {
+      /** After hook → first body scene, and last body scene → CTA. */
+      transitionMs: number;
+      /** Between adjacent body scenes. */
+      sceneMs: number;
+      /** After every sentence period inside a scene. */
+      sentenceMs: number;
+      /** After commas / em-dashes / semicolons inside a sentence. */
+      clauseMs: number;
+      /**
+       * Silence appended AFTER the final CTA segment. Acts as a
+       * "trailing breathing room" buffer so the last spoken word can't
+       * be clipped by player edge-cases (Instagram, YouTube Shorts,
+       * and some browsers truncate the final 100–300ms of a track).
+       */
+      tailMs: number;
+    };
   };
 };
 
@@ -92,16 +145,40 @@ export const NARRATOR: Persona = {
   ].join("\n"),
 
   tts: {
-    edgeEnglishVoice: envOr("EDGE_TTS_VOICE_EN_NARRATOR", "en-US-AvaNeural"),
+    edgeEnglishVoice: envOr(
+      "EDGE_TTS_VOICE_EN_NARRATOR",
+      "en-US-JennyNeural",
+    ),
     edgeIndianEnglishVoice: envOr(
       "EDGE_TTS_VOICE_EN_IN_NARRATOR",
-      "en-IN-NeerjaNeural",
+      "en-US-JennyNeural",
     ),
     edgeHindiVoice: envOr("EDGE_TTS_VOICE_HI_NARRATOR", "hi-IN-SwaraNeural"),
     elevenLabsVoiceId: envOr(
       "ELEVENLABS_VOICE_ID_NARRATOR",
       "21m00Tcm4TlvDq8ikWAM",
     ),
-    targetWpm: Number(process.env.NARRATOR_TARGET_WPM ?? "150"),
+    targetWpm: Number(process.env.NARRATOR_TARGET_WPM ?? "120"),
+    prosody: {
+      // Jenny (older Cortana generation) holds together at -10% rate but
+      // starts to mush past -12%. -1st pitch keeps her in her natural
+      // warm register; deeper than that pushes into uncanny territory on
+      // this voice family. Both tuned in the 2026-05-26 voice A/B.
+      rate: envOr("NARRATOR_PROSODY_RATE", "-10%"),
+      pitch: envOr("NARRATOR_PROSODY_PITCH", "-1st"),
+      volume: process.env.NARRATOR_PROSODY_VOLUME || undefined,
+    },
+    pauses: {
+      // Long-form "explainer / trainer" cadence — viewers get a beat to
+      // absorb the previous idea before the next one starts. tailMs is
+      // applied AFTER the CTA segment so the last spoken word never
+      // gets clipped by player edge-cases (some platforms truncate the
+      // final 100–300ms of a track).
+      transitionMs: Number(process.env.NARRATOR_PAUSE_TRANSITION_MS ?? "650"),
+      sceneMs: Number(process.env.NARRATOR_PAUSE_SCENE_MS ?? "750"),
+      sentenceMs: Number(process.env.NARRATOR_PAUSE_SENTENCE_MS ?? "350"),
+      clauseMs: Number(process.env.NARRATOR_PAUSE_CLAUSE_MS ?? "180"),
+      tailMs: Number(process.env.NARRATOR_PAUSE_TAIL_MS ?? "700"),
+    },
   },
 };
