@@ -95,13 +95,22 @@ Sept 12, 2025). Use a passkey or authenticator app, NOT SMS — see
    token for reads, so this is skippable.
 
 > **Refresh-token lifetime trade-off.** Testing-mode refresh tokens
-> for sensitive scopes (`youtube.upload`) expire after **7 days**.
-> This is a Google policy, not a bug. The fix is either:
+> for sensitive scopes (`youtube.upload`, `youtube`) expire after
+> **7 days**. This is a Google policy, not a bug. The fix is either:
 >   1. Run the **Sunday refresh ritual** (see "Weekly ops" below) —
 >      90 seconds, no code changes.
->   2. Push the OAuth app to "In production" via Google's verification
->      flow (1–4 week review). Requires privacy policy + ToS pages on a
->      verified domain plus an app demo video.
+>   2. Push the OAuth app to "In Production" via Google's verification
+>      flow — see the dedicated **"Permanent fix — Push the YouTube
+>      OAuth app to In Production"** section below for the full
+>      checklist (privacy policy / ToS / demo video / scope
+>      justifications / 1–4 week Google review).
+>
+> **Scope choice.** For posting only, the narrow `youtube.upload`
+> scope is sufficient. To programmatically change a video's privacy,
+> description, or monetization flags AFTER upload, you need the
+> broader `youtube` scope. Verification is required either way for
+> permanent tokens; pick the broader scope when you re-mint to avoid
+> a second round-trip.
 
 ### 4. Provision Vercel Blob
 
@@ -363,10 +372,128 @@ verification:
    # expected: no "auth_failed" anywhere
    ```
 
-When this becomes a chore you don't want to keep doing, file a 1-hour
-block to push the OAuth app to "In production" (privacy policy URL,
-ToS URL, app demo video, scope justification — see Google's
-[verification docs](https://support.google.com/cloud/answer/9110914)).
+When this becomes a chore you don't want to keep doing, file the
+block to push the OAuth app to "In Production" using the next
+section.
+
+---
+
+## Permanent fix — Push the YouTube OAuth app to "In Production"
+
+Once approved, refresh tokens last **indefinitely** (until manually
+revoked) instead of 7 days, and you gain access to the broader
+`youtube` scope which unlocks programmatic privacy edits,
+description updates, monetization toggle (once the channel is in
+YPP), comment management, and video deletion. Total elapsed time:
+**3 hours of your work + 1–4 weeks of Google's review queue.**
+
+### What Google requires (gather these first; ~2 hours)
+
+1. **A privacy policy page** at a verified domain. Must explicitly
+   mention:
+   - what YouTube data you access (videos you upload + your own
+     channel metadata)
+   - that data is processed via Google's YouTube API Services
+   - the YouTube API Services Terms of Service link
+     (<https://developers.google.com/youtube/terms/api-services-terms-of-service>)
+   - the Google Privacy Policy link
+     (<https://policies.google.com/privacy>)
+   - how a user revokes access (link to
+     <https://security.google.com/settings/security/permissions>)
+
+   Add it at `/legal/privacy` on the same domain you've verified
+   in Search Console. Vercel deploys count.
+
+2. **A terms-of-service page** at the same domain (`/legal/terms`).
+   No YouTube-specific clauses required; just standard ToS.
+
+3. **A "homepage"** at the same domain — must be the SAME domain
+   listed as the authorized JavaScript origin in the OAuth client.
+   For us that's `intimacy-and-sex-therapy-library.vercel.app` once
+   we point a custom domain at it; Vercel preview URLs aren't
+   accepted by the reviewers because the subdomain rotates.
+
+4. **An app demo video** (3–5 minutes) showing:
+   - the OAuth consent screen ("This app would like to manage your
+     YouTube videos")
+   - what the app does with the access (post a video, show the
+     resulting public reel)
+   - how a user can revoke access in their Google account
+   Upload it as **Unlisted** to the brand channel itself (meta) and
+   paste the link into the verification form.
+
+5. **Per-scope justification text** (2–3 sentences each) for every
+   sensitive/restricted scope:
+   - `youtube.upload` — "Used to upload short-form video content
+     (Reels/Shorts) produced by the platform on behalf of the
+     authenticated channel owner."
+   - `youtube` — "Used to update video metadata (privacy status,
+     description) and to manage monetization flags on videos
+     previously uploaded by this app."
+   - `youtube.readonly` — "Used to read engagement metrics on
+     uploaded videos for the platform's analytics dashboard."
+
+6. **Brand verification** (only needed if you check 'I want to
+   display a brand name'). Requires owning the domain in Google
+   Search Console + uploading the brand logo at 256×256.
+
+### Submission steps in Google Cloud Console (~30 minutes)
+
+1. **Add the broader scope to the consent screen** first. Open
+   <https://console.cloud.google.com/apis/credentials/consent>
+   in the `intimacy-library` project →
+   **Edit App** → **Scopes** step → **Add or Remove Scopes** →
+   search for `youtube` and tick:
+   - `https://www.googleapis.com/auth/youtube` (the broad one)
+   - keep `youtube.upload` and `youtube.readonly` already there.
+   Save and continue. The app is still in Testing — this just
+   declares what you'll be asking for at verification time.
+
+2. **Privacy policy / homepage / terms URLs.** Same consent-screen
+   editor → **App Information** step → fill in:
+   - Application home page: `https://intimacy-and-sex-therapy-library.vercel.app`
+   - Application privacy policy: `https://intimacy-and-sex-therapy-library.vercel.app/legal/privacy`
+   - Application terms of service: `https://intimacy-and-sex-therapy-library.vercel.app/legal/terms`
+   - Authorized domains: `vercel.app` (Google auto-derives from
+     the URLs above — confirm both are listed)
+
+3. **Push to production.** Consent screen page → bottom →
+   **Publishing status: Testing** → **PUBLISH APP** button →
+   confirm dialog. Status flips to **In Production — verification
+   required**.
+
+4. **Submit for verification.** Consent screen → **Verification
+   Center** (left sidebar) → **Prepare for Verification** →
+   answer the questionnaire:
+   - "Are you using sensitive/restricted scopes?" → **Yes**
+   - Per scope, paste the justifications from step 5 above
+   - Upload the demo video URL
+   - Submit.
+
+5. **Wait for Google.** You'll get an email within 4 business days
+   confirming review has started. Most sex-health / education
+   apps take **2–3 weeks** because reviewers route them to a
+   safety-team queue. Some get extra back-and-forth ("can you
+   clarify how content is moderated?"). Reply same-day to keep the
+   ticket moving.
+
+6. **Once approved**, the existing refresh token does NOT
+   auto-upgrade. Mint a new one via the OAuth Playground using the
+   broader `youtube` scope (Step 3.6 of Day 0, but with the
+   broader scope ticked). Push it to Vercel as `YOUTUBE_REFRESH_TOKEN`,
+   redeploy. From then on the token is permanent.
+
+### What you get post-verification
+
+- 🟢 Permanent refresh tokens — no more weekly ritual
+- 🟢 `npx tsx scripts/_oneoff/yt-make-public.ts <videoId>…` works
+  for retroactive privacy flips on already-uploaded videos
+- 🟢 `npx tsx scripts/_oneoff/backfill-library-footer.ts <draftId>…`
+  (without `--skip-yt`) works for description backfills
+- 🟢 Once the channel is in YPP, `monetizationDetails.access.allowed`
+  can be flipped programmatically per video
+- 🟢 The "unverified app" warning disappears from the consent
+  screen, which is nice if you ever onboard a collaborator
 
 ---
 
