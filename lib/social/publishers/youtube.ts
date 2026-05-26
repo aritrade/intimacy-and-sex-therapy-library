@@ -107,8 +107,26 @@ export async function uploadYouTubeShort(input: YouTubeUploadInput): Promise<You
       defaultAudioLanguage: "en",
     },
     status: {
-      privacyStatus: input.privacyStatus ?? "private",
+      // PUBLIC by default — videos go straight to the channel feed. Override
+      // to "unlisted" / "private" only when the operator wants a preview run.
+      privacyStatus: input.privacyStatus ?? "public",
+      // Required for monetization to ever run. Setting to true would lock
+      // the video into COPPA rules (no ads, no comments, no notifications).
       selfDeclaredMadeForKids: false,
+      // Permits the video to be embedded on third-party pages; required for
+      // monetization on embedded plays and for the "Watch on YouTube" path.
+      embeddable: true,
+      // Allows the public to see view counts; not a monetization gate but
+      // commonly expected by aggregators (RSS, analytics dashboards).
+      publicStatsViewable: true,
+      // NOTE on actual monetization: the per-video "ads on" toggle lives in
+      // `monetizationDetails.access.allowed` (videos.update?part=monetizationDetails)
+      // and requires both (a) the youtubepartner OR youtube scope — our token
+      // currently only has youtube.upload — and (b) the CHANNEL to be enrolled
+      // in YPP. YPP eligibility for Shorts is 1k subscribers + 10M Shorts views
+      // in the last 90 days. Until YPP is granted, ads literally cannot run
+      // regardless of API flags. The flags above are the "monetization-ready"
+      // posture; ads will start automatically the instant YPP is approved.
     },
   };
 
