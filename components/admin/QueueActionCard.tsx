@@ -129,6 +129,49 @@ export function QueueActionCard({ lane, draft }: { lane: string; draft: Draft })
     }
   }
 
+  /**
+   * Trigger a fresh render on GitHub Actions. Used both when a draft
+   * has no video yet (the auto-render cron hasn't fired) and when an
+   * operator wants to re-render an existing draft after, e.g., the
+   * persona / pacing / style changed.
+   */
+  async function onRender(style?: string) {
+    if (!window.confirm(
+      draft.videoUrl
+        ? "Re-render this draft? Existing videoUrl will be replaced after the GH Action completes (2-3 min)."
+        : "Trigger a render? Runs on GitHub Actions (2-3 min). Page will need a manual refresh once it's done.",
+    )) {
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/admin/drafts/${draft.id}/render`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(style ? { style } : {}),
+      });
+      const json = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        detail?: string;
+        runsUrl?: string;
+      };
+      if (!res.ok) {
+        setError(json.detail ?? json.error ?? `${res.status} ${res.statusText}`);
+      } else {
+        setDoneMessage(
+          json.runsUrl
+            ? `Render dispatched — watch at ${json.runsUrl}`
+            : "Render dispatched",
+        );
+      }
+    } catch (e) {
+      setError(String((e as Error).message));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div className="rounded-xl border border-border bg-surface p-3 space-y-2">
       <div className="flex items-center gap-2 flex-wrap">
@@ -180,6 +223,18 @@ export function QueueActionCard({ lane, draft }: { lane: string; draft: Draft })
             className="btn-primary text-xs px-3 py-1.5"
           >
             {busy ? action.loading : action.label}
+          </button>
+          <button
+            onClick={() => onRender()}
+            disabled={busy}
+            title={
+              draft.videoUrl
+                ? "Re-render this draft on GitHub Actions"
+                : "Trigger a render on GitHub Actions"
+            }
+            className="pill text-[11px]"
+          >
+            {draft.videoUrl ? "Re-render" : "Render"}
           </button>
           <button
             onClick={onRequestChanges}

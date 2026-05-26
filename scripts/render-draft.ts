@@ -1,21 +1,20 @@
 /**
- * Render a draft locally to /public/renders/<id>/video.mp4.
+ * Render a single draft from the CLI.
  *
  *   npm run render -- <draftId> [--style typography|stock|photo|avatar|long_form_essay]
  *
- * Loads the draft from the DB, parses its scriptMd, runs the full
- * TTS → (optional Replicate avatar / stock photo collage) → Remotion →
- * Whisper pipeline, and updates the row with videoUrl, voiceoverUrl,
- * captionsSrt, and status="rendered". Default style is "photo" — narrator
- * voiceover over a Ken-Burns sequence of stock photos with kinetic
- * captions. Works on the free tier without any paid AI compute.
+ * Thin wrapper around `renderDraftAndPersist()` — the same helper the
+ * GH Actions render-due cron and the admin "Render" button use. Default
+ * style is "photo" (Ken-Burns stock-photo collage with kinetic captions);
+ * works on the free tier without any paid AI compute.
+ *
+ * Status transition rules live in lib/social/render-and-persist.ts —
+ * notably, rendering a `script_draft` PRESERVES the script_draft status
+ * so the clinician-review guardrail isn't accidentally bypassed.
  */
 import "dotenv/config";
-import { eq } from "drizzle-orm";
-import { db } from "../lib/db/client";
-import { contentDrafts } from "../lib/db/schema";
-import { renderDraft, type RenderInput } from "../lib/social/render";
-import type { GeneratedScript } from "../lib/social/script-generator";
+import { renderDraftAndPersist, RenderPersistError } from "../lib/social/render-and-persist";
+import type { RenderInput } from "../lib/social/render";
 
 type Style = NonNullable<RenderInput["style"]>;
 const KNOWN_STYLES: Style[] = ["typography", "stock", "photo", "avatar", "long_form_essay"];
@@ -49,88 +48,23 @@ async function main() {
     process.exit(2);
   }
 
-  const rows = await db.select().from(contentDrafts).where(eq(contentDrafts.id, id)).limit(1);
-  const draft = rows[0];
-  if (!draft) {
-    console.error(`Draft ${id} not found`);
-    process.exit(1);
+  try {
+    const r = await renderDraftAndPersist(id, { style });
+    console.log("");
+    console.log("[render] OK");
+    console.log("  status   :", r.fromStatus, "->", r.toStatus);
+    console.log("  video    :", r.render.publicVideoUrl);
+    console.log("  voice    :", r.render.publicVoiceoverUrl ?? "(none)");
+    console.log("  drift    :", r.render.drift ?? "(no whisper)");
+    console.log("  duration :", r.render.totalSeconds, "s");
+    process.exit(0);
+  } catch (e) {
+    if (e instanceof RenderPersistError) {
+      console.error(`[render] FAILED (${e.reason}): ${e.detail ?? ""}`);
+      process.exit(1);
+    }
+    throw e;
   }
-  if (!draft.scriptMd) {
-    console.error("Draft has no script. Generate one first.");
-    process.exit(1);
-  }
-
-  const script = parseScriptMd(draft.scriptMd);
-
-  const result = await renderDraft({
-    draftId: draft.id,
-    script,
-    language: draft.language as "en" | "hi" | "hinglish",
-    style,
-  });
-
-  // Status transition rules:
-  //   - script_draft / clinician_reviewed → rendered (normal v1 flow:
-  //     render happens between the two approval gates)
-  //   - rendered → rendered (re-render keeps status)
-  //   - editor_reviewed / scheduled / published → KEEP existing status
-  //     (re-rendering must not silently undo approvals or republish)
-  const preserveStatuses = new Set([
-    "editor_reviewed",
-    "scheduled",
-    "published",
-  ]);
-  const nextStatus = preserveStatuses.has(draft.status) ? draft.status : "rendered";
-
-  await db
-    .update(contentDrafts)
-    .set({
-      videoUrl: result.publicVideoUrl,
-      voiceoverUrl: result.publicVoiceoverUrl,
-      captionsSrt: result.captionsSrt,
-      status: nextStatus,
-    })
-    .where(eq(contentDrafts.id, draft.id));
-
-  console.log("");
-  console.log("[render] OK");
-  console.log("  video    :", result.publicVideoUrl);
-  console.log("  voice    :", result.publicVoiceoverUrl ?? "(none)");
-  console.log("  drift    :", result.drift ?? "(no whisper)");
-  console.log("  duration :", result.totalSeconds, "s");
-  process.exit(0);
-}
-
-function parseScriptMd(md: string): GeneratedScript {
-  const get = (h: string) => {
-    const re = new RegExp(`# ${h}\\n([\\s\\S]*?)(?:\\n# |$)`);
-    return md.match(re)?.[1].trim() ?? "";
-  };
-  const hook = get("Hook");
-  const cta = get("CTA");
-  const caption = get("Caption");
-  const citationLine = get("Citation") || null;
-  const hashtags = get("Hashtags").split(/\s+/).filter(Boolean);
-  const durationStr = get("Duration").replace(/s$/, "");
-  const duration = Number(durationStr) || 60;
-  const body = get("Body")
-    .split(/\n/)
-    .map((line) => {
-      const m = line.match(/^\d+\.\s*\((\d+(?:\.\d+)?)s\)\s*(.+)$/);
-      return m ? { seconds: Number(m[1]), text: m[2] } : null;
-    })
-    .filter((x): x is { seconds: number; text: string } => x !== null);
-
-  return {
-    hook,
-    body,
-    cta,
-    caption,
-    hashtags,
-    citationLine,
-    warning: null,
-    durationSeconds: duration,
-  };
 }
 
 main().catch((e) => {

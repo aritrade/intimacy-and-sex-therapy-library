@@ -1,0 +1,103 @@
+# Hourly render-when-due + on-demand render-this-specific-draft.
+#
+# Why GitHub Actions (and not a Vercel cron):
+#   - Remotion's renderMedia() needs a headless Chromium binary that's
+#     ~150 MB on disk; Vercel serverless functions cap at 50 MB. We
+#     would need @remotion/lambda or a custom container to run on
+#     Vercel, both of which cost money + add ops complexity.
+#   - GH Actions free tier gives 2,000 minutes/month. Each render takes
+#     ~2-3 minutes; daily-generate produces 3 drafts/day => ~270 min/mo.
+#     Plenty of headroom for re-renders, ad-hoc runs, and longer essays.
+#
+# Two triggers:
+#   * schedule: every hour at :23 (offset from publish-due at :07 to
+#     avoid simultaneous load on Neon / Vercel Blob).
+#   * workflow_dispatch: fired by the admin "Render" button in
+#     /admin/queue — pass draft_id to render a single draft right now.
+#
+# Required GH Actions secrets (set via `gh secret set <NAME>`):
+#   - DATABASE_URL              (Neon postgres URL)
+#   - BLOB_READ_WRITE_TOKEN     (Vercel Blob, write-scoped)
+#   - PEXELS_API_KEY            (stock photos)
+#   - PIXABAY_API_KEY           (stock photos fallback)
+#   - OPENAI_API_KEY            (optional — Whisper caption verification)
+#
+# Status transitions are guarded by lib/social/render-and-persist.ts:
+#   - script_draft / editor_reviewed / scheduled / posted → preserved
+#   - clinician_reviewed → rendered
+
+name: render-due
+
+on:
+  schedule:
+    # Every hour, at :23 (offset from publish-due at :07).
+    - cron: "23 * * * *"
+  workflow_dispatch:
+    inputs:
+      draft_id:
+        description: "Specific draft UUID to render (leave empty to batch-scan)"
+        required: false
+        type: string
+      style:
+        description: "Override visual style (typography|stock|photo|avatar|long_form_essay). Empty = use default (photo)."
+        required: false
+        type: string
+
+# Don't let overlapping runs double-render the same draft. The hourly
+# cron will skip if a previous run is still going; the manual button
+# will queue behind whatever is in flight.
+concurrency:
+  group: render-due
+  cancel-in-progress: false
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install ffmpeg
+        # Remotion uses ffmpeg for audio mixing; we also use ffmpeg-static
+        # but apt's ffmpeg is faster on big concat operations.
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+
+      - name: Install npm deps
+        run: npm ci --no-audit --no-fund
+
+      - name: Cache Remotion bundle output
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/remotion
+            node_modules/.cache
+          key: remotion-cache-v1-${{ hashFiles('package-lock.json', 'video-factory/**') }}
+          restore-keys: |
+            remotion-cache-v1-
+
+      - name: Render
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          BLOB_READ_WRITE_TOKEN: ${{ secrets.BLOB_READ_WRITE_TOKEN }}
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+          PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          DRAFT_ID: ${{ inputs.draft_id }}
+          STYLE: ${{ inputs.style }}
+          RENDER_DUE_BATCH: "5"
+        run: npx tsx scripts/render-due.ts
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "### render-due summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "* trigger : ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "* draft_id: ${{ inputs.draft_id || '(batch)' }}" >> $GITHUB_STEP_SUMMARY
+          echo "* style   : ${{ inputs.style || '(default)' }}" >> $GITHUB_STEP_SUMMARY
+          echo "* status  : ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
