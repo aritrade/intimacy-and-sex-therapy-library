@@ -1,10 +1,20 @@
 /**
  * Instagram Reels publisher (Meta Graph API).
  *
- * Two-step container flow:
- *   1) POST /{ig-user-id}/media           media_type=REELS, video_url, caption
- *   2) GET  /{container-id}?fields=status_code  (poll until FINISHED)
- *   3) POST /{ig-user-id}/media_publish   creation_id=<container-id>
+ * Three-step container flow (blind-publish variant):
+ *   1) POST /{ig-user-id}/media          media_type=REELS, video_url, caption
+ *   2) sleep WARMUP_MS                    let Meta transcode the source
+ *   3) POST /{ig-user-id}/media_publish   with retry-on-transient
+ *
+ * Why no status_code poll: GET /<container-id>?fields=status_code
+ * returns an Authorization Error (code 100, subcode 33) when called
+ * with a Page access token, which is the only token type that has
+ * instagram_content_publish. There is no documented way to read
+ * container status from a Page token. POST /media_publish on the
+ * same container DOES succeed once Meta has finished transcoding,
+ * so we just wait, then poke media_publish, retrying transient
+ * "not ready" errors. Empirically validated 2026-05-26 across 3
+ * Reels — all succeeded on attempt 1 of 6 with a 60s warmup.
  *
  * IMPORTANT — sex-health platform reality:
  *   Instagram aggressively reduces reach on, shadowbans, or removes content
@@ -25,7 +35,7 @@ export class PublisherRefusal extends Error {
       | "missing_video_url"
       | "container_failed"
       | "publish_failed"
-      | "not_finished",
+      | "publish_timeout",
     public detail?: string,
   ) {
     super(`${reason}${detail ? `: ${detail}` : ""}`);
@@ -44,6 +54,21 @@ export type InstagramPublishResult = {
 };
 
 const GRAPH_VERSION = "v22.0";
+
+/**
+ * How long to wait between container creation and the first publish
+ * attempt. Empirically, 60s is enough for Meta to transcode our 37-42s
+ * Reels every time so far. Overridable for longer/heavier source files.
+ */
+const WARMUP_MS = Number(process.env.IG_PUBLISH_WARMUP_MS ?? "60000");
+/** Backoff between retried publish attempts when Meta says "not ready". */
+const RETRY_MS = Number(process.env.IG_PUBLISH_RETRY_MS ?? "30000");
+/**
+ * Cap on retries. With WARMUP=60s + 6 attempts * RETRY=30s we give Meta
+ * up to ~4 minutes total before giving up. Fits well within a Vercel
+ * Pro 300s function budget; bump only if a longer reel justifies it.
+ */
+const MAX_RETRIES = Number(process.env.IG_PUBLISH_MAX_RETRIES ?? "6");
 
 export async function publishInstagramReel(input: InstagramPublishInput): Promise<InstagramPublishResult> {
   const igUserId = process.env.INSTAGRAM_BUSINESS_ACCOUNT_ID;
@@ -78,37 +103,48 @@ export async function publishInstagramReel(input: InstagramPublishInput): Promis
   if (!createRes.ok || !createJson.id) {
     throw new PublisherRefusal("container_failed", JSON.stringify(createJson));
   }
-
-  // 2) Poll status
   const containerId = createJson.id;
-  const finished = await pollContainer(containerId, accessToken);
-  if (!finished) throw new PublisherRefusal("not_finished", "container did not reach FINISHED in 90s");
 
-  // 3) Publish
+  // 2) Warmup — give Meta time to transcode the source video before
+  //    we attempt publish. See module header for why we don't poll.
+  await sleep(WARMUP_MS);
+
+  // 3) Blind publish with retry-on-transient. We can't read container
+  //    status (Page-token Auth Error subcode 33) so we just keep poking
+  //    media_publish until either it succeeds or we exhaust retries.
   const publishUrl = `https://graph.facebook.com/${GRAPH_VERSION}/${igUserId}/media_publish`;
-  const publishRes = await fetch(publishUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ creation_id: containerId, access_token: accessToken }),
-  });
-  const publishJson = (await publishRes.json()) as { id?: string; error?: unknown };
-  if (!publishRes.ok || !publishJson.id) {
-    throw new PublisherRefusal("publish_failed", JSON.stringify(publishJson));
+  let lastError = "no attempts made";
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    const publishRes = await fetch(publishUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ creation_id: containerId, access_token: accessToken }),
+    });
+    const publishJson = (await publishRes.json()) as
+      | { id: string }
+      | { error: { message: string } };
+    if ("id" in publishJson) {
+      return { postId: publishJson.id };
+    }
+    const errMsg = "error" in publishJson ? publishJson.error.message : "unknown";
+    lastError = errMsg;
+    // Heuristic: anything that mentions "not ready" / "still processing"
+    // / "in progress" / "try again" is a transient transcoding-not-done
+    // signal — back off and retry. Anything else (auth, validation,
+    // duplicate-post, rate-limit) is terminal — fail fast so the caller
+    // surfaces the actual issue instead of timing out at MAX_RETRIES.
+    const transient = /not ready|still processing|in progress|try again|please retry/i.test(errMsg);
+    if (!transient) {
+      throw new PublisherRefusal("publish_failed", JSON.stringify(publishJson));
+    }
+    if (attempt < MAX_RETRIES) {
+      await sleep(RETRY_MS);
+    }
   }
-
-  return { postId: publishJson.id };
-}
-
-async function pollContainer(containerId: string, token: string): Promise<boolean> {
-  const url = `https://graph.facebook.com/${GRAPH_VERSION}/${containerId}?fields=status_code&access_token=${token}`;
-  for (let i = 0; i < 30; i++) {
-    const res = await fetch(url);
-    const j = (await res.json()) as { status_code?: string };
-    if (j.status_code === "FINISHED") return true;
-    if (j.status_code === "ERROR") return false;
-    await sleep(3000);
-  }
-  return false;
+  throw new PublisherRefusal(
+    "publish_timeout",
+    `container ${containerId} not publishable after ${MAX_RETRIES} attempts; last error: ${lastError}`,
+  );
 }
 
 function sleep(ms: number) {

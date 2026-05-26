@@ -36,6 +36,7 @@ scripts/_oneoff/
 scripts/push-vercel-secrets.sh
 .env*.bak
 .env.check*
+.env.vercel*
 
 # Local agent / IDE scratch
 .cursor/

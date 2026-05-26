@@ -31,15 +31,6 @@ const SHOWN_ENV_KEYS = [
   "AUTH_TRUST_HOST",
   "VERCEL_ENV",
   "NODE_ENV",
-  // Publisher creds — temporarily included so we can verify Sensitive-by-
-  // default vars actually have a value in the runtime (vercel env pull
-  // shows them as "" regardless of true value). Length + 3+2 preview is
-  // enough to confirm the value isn't empty without exfiltrating it.
-  "INSTAGRAM_BUSINESS_ACCOUNT_ID",
-  "META_GRAPH_ACCESS_TOKEN",
-  "YOUTUBE_CLIENT_ID",
-  "YOUTUBE_CLIENT_SECRET",
-  "YOUTUBE_REFRESH_TOKEN",
 ];
 
 export async function GET() {
@@ -84,100 +75,6 @@ export async function GET() {
     };
   }
 
-  // Live publisher-credential probes — confirm the runtime-visible
-  // META token + YT refresh token actually work against their APIs.
-  // Side-effect-free: GET /me on Graph, refresh_token grant on YT.
-  const publisherProbes: Record<string, unknown> = {};
-  const metaTok = process.env.META_GRAPH_ACCESS_TOKEN;
-  const igId = process.env.INSTAGRAM_BUSINESS_ACCOUNT_ID;
-  if (metaTok && igId) {
-    try {
-      const r = await fetch(
-        `https://graph.facebook.com/v18.0/me?fields=id,name,category&access_token=${encodeURIComponent(metaTok)}`,
-      );
-      const body = (await r.json()) as
-        | { id: string; name?: string }
-        | { error: { message: string } };
-      if ("error" in body) {
-        publisherProbes.meta = { ok: false, reason: body.error.message };
-      } else {
-        // Probe IG linkage too.
-        let igLinkOk = false;
-        let igLinkDetail = "(not checked)";
-        try {
-          const ig = await fetch(
-            `https://graph.facebook.com/v18.0/${body.id}?fields=instagram_business_account&access_token=${encodeURIComponent(metaTok)}`,
-          );
-          const igBody = (await ig.json()) as {
-            instagram_business_account?: { id: string };
-            error?: { message: string };
-          };
-          if (igBody.instagram_business_account?.id) {
-            igLinkOk = igBody.instagram_business_account.id === igId;
-            igLinkDetail = igLinkOk
-              ? "linked IG matches INSTAGRAM_BUSINESS_ACCOUNT_ID"
-              : `linked IG=${igBody.instagram_business_account.id} does NOT match env=${igId}`;
-          } else if (igBody.error) {
-            igLinkDetail = `error: ${igBody.error.message}`;
-          } else {
-            igLinkDetail = "no instagram_business_account on this Page";
-          }
-        } catch (e) {
-          igLinkDetail = `probe failed: ${(e as Error).message}`;
-        }
-        publisherProbes.meta = {
-          ok: igLinkOk,
-          page: body.name ?? body.id,
-          igLink: igLinkDetail,
-        };
-      }
-    } catch (e) {
-      publisherProbes.meta = { ok: false, reason: (e as Error).message };
-    }
-  } else {
-    publisherProbes.meta = { ok: false, reason: "env missing" };
-  }
-
-  const ytId = process.env.YOUTUBE_CLIENT_ID;
-  const ytSec = process.env.YOUTUBE_CLIENT_SECRET;
-  const ytRef = process.env.YOUTUBE_REFRESH_TOKEN;
-  if (ytId && ytSec && ytRef) {
-    try {
-      const r = await fetch("https://oauth2.googleapis.com/token", {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({
-          client_id: ytId,
-          client_secret: ytSec,
-          refresh_token: ytRef,
-          grant_type: "refresh_token",
-        }).toString(),
-      });
-      const body = (await r.json()) as
-        | { access_token: string; scope?: string; expires_in?: number }
-        | { error: string; error_description?: string };
-      if ("access_token" in body) {
-        const scopes = (body.scope ?? "").split(/\s+/).filter(Boolean);
-        const hasUpload = scopes.some((s) => s.endsWith("/youtube.upload"));
-        publisherProbes.youtube = {
-          ok: hasUpload,
-          scopesIncludesUpload: hasUpload,
-          allScopes: scopes,
-          accessTokenExpiresInSec: body.expires_in ?? null,
-        };
-      } else {
-        publisherProbes.youtube = {
-          ok: false,
-          reason: `${body.error}${body.error_description ? ` — ${body.error_description}` : ""}`,
-        };
-      }
-    } catch (e) {
-      publisherProbes.youtube = { ok: false, reason: (e as Error).message };
-    }
-  } else {
-    publisherProbes.youtube = { ok: false, reason: "env missing" };
-  }
-
   const cookieStore = cookies();
   const cookieNames = cookieStore.getAll().map((c) => ({
     name: c.name,
@@ -198,7 +95,6 @@ export async function GET() {
       runtime: "nodejs",
       env,
       session: sessionInfo,
-      publisherProbes,
       cookies: cookieNames,
       request: reqInfo,
     },

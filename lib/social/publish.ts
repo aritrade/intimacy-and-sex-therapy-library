@@ -75,7 +75,7 @@ export async function publishDraft(input: PublishInput): Promise<PublishResult> 
     try {
       const r = await publishInstagramReel({
         videoUrl: draft.videoUrl,
-        caption: extractCaption(draft.scriptMd ?? ""),
+        caption: appendLibraryFooter(extractCaption(draft.scriptMd ?? "")),
       });
       platformPostIds.instagram = r.postId;
     } catch (e) {
@@ -94,7 +94,7 @@ export async function publishDraft(input: PublishInput): Promise<PublishResult> 
         videoUrl: draft.videoUrl,
         videoPath: `${process.cwd()}/public/renders/${draft.id}/video.mp4`,
         title: extractFirstLine(draft.scriptMd ?? "Untitled"),
-        description: extractCaption(draft.scriptMd ?? ""),
+        description: appendLibraryFooter(extractCaption(draft.scriptMd ?? "")),
       });
       platformPostIds.youtube = r.videoId;
     } catch (e) {
@@ -162,6 +162,23 @@ export function extractCaption(md: string): string {
 export function extractFirstLine(md: string): string {
   const m = md.match(/# Hook\n(.*)/);
   return (m?.[1] ?? "Intimacy & Sex Therapy Library short").slice(0, 100);
+}
+
+/**
+ * Standard brand footer appended to every IG caption + YT description.
+ * Idempotent: if the text already mentions our domain (some captions
+ * include a deep-link to a specific blog topic, which already satisfies
+ * the "library link" requirement), we don't double up.
+ *
+ * Kept here (not in BRAND_COPY) because it's prose, not a token. If
+ * the wording ever needs A/B testing we can move it to a setting.
+ */
+export const LIBRARY_FOOTER = `Visit our library at ${BRAND_COPY.url}/ for more information`;
+
+export function appendLibraryFooter(text: string): string {
+  const cleaned = text.trimEnd();
+  if (cleaned.includes(BRAND_COPY.domain)) return cleaned;
+  return `${cleaned}\n\n${LIBRARY_FOOTER}`;
 }
 
 /**
