@@ -31,6 +31,8 @@ const SHOWN_ENV_KEYS = [
   "AUTH_TRUST_HOST",
   "VERCEL_ENV",
   "NODE_ENV",
+  "GH_RENDER_TOKEN",
+  "GH_RENDER_REPO",
 ];
 
 export async function GET() {
@@ -44,7 +46,8 @@ export async function GET() {
     // Safe-to-show non-secret values
     if (k === "BOOTSTRAP_ADMIN_EMAILS" || k === "NEXT_PUBLIC_SITE_URL"
         || k === "AUTH_RESEND_FROM" || k === "AUTH_TRUST_HOST"
-        || k === "VERCEL_ENV" || k === "NODE_ENV" || k === "NEXTAUTH_URL") {
+        || k === "VERCEL_ENV" || k === "NODE_ENV" || k === "NEXTAUTH_URL"
+        || k === "GH_RENDER_REPO") {
       env[k].preview = v ?? "";
     } else if (typeof v === "string" && v.length > 0) {
       env[k].preview = `${v.slice(0, 3)}…${v.slice(-2)}`;
