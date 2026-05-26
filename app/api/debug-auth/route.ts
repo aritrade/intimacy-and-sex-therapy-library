@@ -31,6 +31,15 @@ const SHOWN_ENV_KEYS = [
   "AUTH_TRUST_HOST",
   "VERCEL_ENV",
   "NODE_ENV",
+  // Publisher creds — temporarily included so we can verify Sensitive-by-
+  // default vars actually have a value in the runtime (vercel env pull
+  // shows them as "" regardless of true value). Length + 3+2 preview is
+  // enough to confirm the value isn't empty without exfiltrating it.
+  "INSTAGRAM_BUSINESS_ACCOUNT_ID",
+  "META_GRAPH_ACCESS_TOKEN",
+  "YOUTUBE_CLIENT_ID",
+  "YOUTUBE_CLIENT_SECRET",
+  "YOUTUBE_REFRESH_TOKEN",
 ];
 
 export async function GET() {
