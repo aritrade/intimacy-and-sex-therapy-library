@@ -319,16 +319,20 @@ Run these in order. Stop at the first failure.
 
 ## Daily ops (after Day 1)
 
-| Time (IST)   | What runs                                 | Where                        |
-| ------------ | ----------------------------------------- | ---------------------------- |
-| 03:00        | `daily-content-sync` cron                 | Vercel cron                  |
-| 05:00        | `daily-generate` cron (3 drafts)          | Vercel cron                  |
-| Every hour   | `publish-due` workflow                    | GitHub Actions               |
-| Mondays 06:00| `post-metrics-poll` cron (weekly metrics) | Vercel cron                  |
+| Time (IST)          | What runs                                 | Where                        |
+| ------------------- | ----------------------------------------- | ---------------------------- |
+| 03:00               | `daily-content-sync` cron                 | Vercel cron                  |
+| 05:00               | `daily-generate` cron (3 drafts)          | Vercel cron                  |
+| Every hour at :23   | `render-due` workflow (renders unrendered drafts) | GitHub Actions       |
+| Every hour at :07   | `publish-due` workflow                    | GitHub Actions               |
+| Mondays 06:00       | `post-metrics-poll` cron (weekly metrics) | Vercel cron                  |
 
-Operator's daily ritual (5–10 minutes):
+Operator's daily ritual (5–10 minutes, from ANY browser including phone):
 
-1. Open `/admin/queue`. Approve / reject the day's drafts.
+1. Open `/admin/queue`. Each draft already has a rendered video preview
+   (the hourly `render-due` workflow takes care of this within ~60 min
+   of `daily-generate` firing — no CLI needed). Approve / reject the
+   day's drafts.
 2. Open `/admin/proposals`. Approve / reject the agents' suggestions.
 3. (Optional) Schedule the approved drafts for evening posting:
 
@@ -338,7 +342,34 @@ Operator's daily ritual (5–10 minutes):
     WHERE id = '<draft-id>';
    ```
 
+   (Use Neon's web SQL editor at <https://console.neon.tech> or any
+   browser-based DB client — no local psql required.)
+
 4. The hourly publish-due workflow handles the rest.
+
+### Manual render via the "Render" button (any browser)
+
+If a draft has no video yet (you opened the queue right after
+`daily-generate` fired and before `render-due` ran), or you want to
+re-render after editing the script or persona, click the **Render** /
+**Re-render** pill on the draft card. This dispatches the same
+`render-due` GH Actions workflow with that specific `draft_id`. Watch
+progress at the URL in the success toast (typical render: 2-3 min).
+
+Requires `GH_RENDER_TOKEN` env var on Vercel — a fine-grained PAT with
+`Actions: read/write` + `Contents: read` on this repo. If unset, the
+button returns 503 with a clear message.
+
+### Manual render via CLI (legacy, still works)
+
+```bash
+DATABASE_URL='...' BLOB_READ_WRITE_TOKEN='...' \
+  PEXELS_API_KEY='...' PIXABAY_API_KEY='...' \
+  npm run render -- <draftId> [--style photo|stock|typography|avatar|long_form_essay]
+```
+
+This flows through the same `lib/social/render-and-persist.ts`
+helper the GH cron and admin button use, so behaviour is identical.
 
 ---
 
