@@ -25,6 +25,7 @@ import type { ReactElement } from "react";
 import { auth } from "./auth";
 import { isBasicAuthEnabled } from "@/lib/admin/auth";
 import type { Role } from "./roles";
+import { hasAnyAdminAreaRole } from "./role-types";
 
 const BOOTSTRAP_ADMIN_EMAILS = (process.env.BOOTSTRAP_ADMIN_EMAILS ?? "")
   .split(",")
@@ -76,3 +77,45 @@ export async function requireRolePage(required: Role): Promise<ReactElement | nu
 export const requireAdminPage = () => requireRolePage("admin");
 export const requireClinicianPage = () => requireRolePage("clinician");
 export const requireEditorPage = () => requireRolePage("editor");
+
+/**
+ * Read-access guard for shared admin dashboards. Passes for any account
+ * that holds *any* admin-area role (viewer, clinician, editor, admin) or
+ * is a bootstrap-admin email or is coming in over the Basic-auth fallback.
+ *
+ * Use this on pages whose contents are safe to expose to a stakeholder
+ * viewer — analytics, feedback, subscribers, the admin home tiles, etc.
+ * Pages that contain mutation actions (role grants, publish, approval)
+ * should keep `requireAdminPage` / `requireEditorPage`.
+ */
+export async function requireAdminAreaPage(): Promise<ReactElement | null> {
+  const session = await auth();
+  const roles = session?.user?.roles ?? [];
+  if (hasAnyAdminAreaRole(roles)) return null;
+
+  const email = (session?.user?.email ?? "").toLowerCase();
+  if (email && BOOTSTRAP_ADMIN_EMAILS.includes(email)) return null;
+
+  if (!session?.user?.id && isBasicAuthEnabled()) return null;
+
+  return (
+    <div className="container-page py-16 max-w-xl text-center">
+      <p className="pill-coral w-fit mx-auto">403 — forbidden</p>
+      <h1 className="mt-4 font-serif text-3xl text-ink-900">
+        You don&rsquo;t have access to this page
+      </h1>
+      <p className="mt-3 text-ink-600">
+        This page requires the <code>viewer</code> role or higher. Ask an
+        admin to grant it from <code>/admin/users</code>.
+      </p>
+      <div className="mt-6 flex gap-3 justify-center">
+        <Link href="/" className="btn-secondary">
+          Back to home
+        </Link>
+        <Link href="/sign-in" className="btn-primary">
+          Sign in as a different account
+        </Link>
+      </div>
+    </div>
+  );
+}

@@ -674,7 +674,13 @@ export const verificationTokens = pgTable(
 // Roles
 // ---------------------------------------------------------------------------
 
-export const userRole = pgEnum("user_role", ["user", "clinician", "editor", "admin"]);
+export const userRole = pgEnum("user_role", [
+  "user",
+  "viewer",
+  "clinician",
+  "editor",
+  "admin",
+]);
 
 export const userRoles = pgTable(
   "user_roles",

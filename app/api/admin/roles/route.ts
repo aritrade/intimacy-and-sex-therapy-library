@@ -28,7 +28,7 @@ import { getActor } from "@/lib/admin/actor";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const RoleSchema = z.enum(["clinician", "editor", "admin"]);
+const RoleSchema = z.enum(["viewer", "clinician", "editor", "admin"]);
 const Body = z.object({
   userId: z.string().uuid(),
   role: RoleSchema,

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { AreaChartCard } from "@/components/admin/charts/Charts";
-import { requireAdminPage } from "@/lib/auth/admin-page-guard";
+import { requireAdminAreaPage } from "@/lib/auth/admin-page-guard";
 import { subscriberView } from "@/lib/admin/dashboard-stats";
 
 export const metadata = { title: "Subscribers · Admin" };
@@ -11,7 +11,7 @@ export default async function AdminSubscribers({
 }: {
   searchParams: { days?: string };
 }) {
-  const guard = await requireAdminPage();
+  const guard = await requireAdminAreaPage();
   if (guard) return guard;
 
   const windowDays = Number(searchParams.days) || 90;

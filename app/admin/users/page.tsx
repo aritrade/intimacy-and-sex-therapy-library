@@ -3,6 +3,7 @@ import { db } from "@/lib/db/client";
 import { users, userRoles } from "@/lib/db/schema";
 import { requireAdminPage } from "@/lib/auth/admin-page-guard";
 import { UserRoleRow } from "@/components/admin/UserRoleRow";
+import { InviteUserCard } from "@/components/admin/InviteUserCard";
 
 export const metadata = { title: "Users · Admin" };
 export const dynamic = "force-dynamic";
@@ -79,9 +80,12 @@ export default async function AdminUsersPage() {
         )}
       </header>
 
+      <InviteUserCard />
+
       {usersWithRoles.length === 0 ? (
         <div className="card p-6 text-sm text-ink-600">
-          No users have signed in yet.
+          No users have signed in or been invited yet. Use the invite card
+          above to pre-grant roles by email.
         </div>
       ) : (
         <ul className="space-y-2">
@@ -111,6 +115,12 @@ export default async function AdminUsersPage() {
             granted or revoked.
           </li>
           <li>
+            <strong>viewer</strong> — read-only access to <code>/admin/analytics</code>,{" "}
+            <code>/admin/feedback</code>, and <code>/admin/subscribers</code>.
+            Cannot approve, publish, edit, or change roles. Good for
+            stakeholders who need the numbers but no editorial control.
+          </li>
+          <li>
             <strong>clinician</strong> — required to approve a draft script
             clinically. The clinician's profile in <code>clinical_advisors</code>{" "}
             should be linked separately.
@@ -120,10 +130,16 @@ export default async function AdminUsersPage() {
             to click publish.
           </li>
           <li>
-            <strong>admin</strong> — full access including this page. The system
-            refuses to demote the last admin.
+            <strong>admin</strong> — full access including this page (invites,
+            grants, revokes). The system refuses to demote the last admin.
           </li>
         </ul>
+        <p className="mt-3 text-xs text-ink-500">
+          Permission model: granting "viewer" gives access to the read-only
+          dashboards. Granting "editor" implicitly gives view access too —
+          roles are additive. Mutation endpoints always check the specific
+          role they need, so a viewer can never publish or grant.
+        </p>
       </section>
     </div>
   );

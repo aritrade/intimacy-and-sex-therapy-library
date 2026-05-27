@@ -13,8 +13,15 @@ type UserView = {
   createdAt: string;
 };
 
-const GRANTABLE = ["clinician", "editor", "admin"] as const;
+const GRANTABLE = ["viewer", "clinician", "editor", "admin"] as const;
 type Grantable = (typeof GRANTABLE)[number];
+
+const ROLE_DESCRIPTIONS: Record<Grantable, string> = {
+  viewer: "Read-only access to admin dashboards (analytics, feedback, subscribers).",
+  clinician: "Required for clinical approval of draft scripts.",
+  editor: "Required for editorial approval and to click publish.",
+  admin: "Full control, including this page. Last admin cannot be demoted.",
+};
 
 export function UserRoleRow({
   user,
@@ -66,7 +73,7 @@ export function UserRoleRow({
               <span className="pill">user</span>
             ) : (
               user.roles.map((r) => (
-                <span key={r} className={r === "admin" ? "pill-coral" : "pill-accent"}>
+                <span key={r} className={pillClassForRole(r)}>
                   {r}
                 </span>
               ))
@@ -90,8 +97,12 @@ export function UserRoleRow({
               type="button"
               onClick={() => mutate(method, role)}
               disabled={!!busy || blocked}
-              className={has ? "btn-secondary text-xs" : "btn-secondary text-xs"}
-              title={blocked ? "Cannot demote the last admin" : undefined}
+              className="btn-secondary text-xs"
+              title={
+                blocked
+                  ? "Cannot demote the last admin"
+                  : ROLE_DESCRIPTIONS[role]
+              }
             >
               {busy === `${method}:${role}` ? "…" : label}
             </button>
@@ -106,6 +117,12 @@ export function UserRoleRow({
       )}
     </li>
   );
+}
+
+function pillClassForRole(r: string): string {
+  if (r === "admin") return "pill-coral";
+  if (r === "viewer") return "pill";
+  return "pill-accent";
 }
 
 function Avatar({

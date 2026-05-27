@@ -4,7 +4,26 @@
  * doesn't have a session yet.
  */
 
-export type Role = "user" | "clinician" | "editor" | "admin";
+export type Role = "user" | "viewer" | "clinician" | "editor" | "admin";
+
+/**
+ * Roles that grant read access to the /admin area. `viewer` is a strictly
+ * read-only role used for stakeholders who should see the analytics,
+ * feedback, and subscriber dashboards but cannot mutate anything.
+ */
+export const ADMIN_AREA_ROLES: readonly Role[] = [
+  "viewer",
+  "clinician",
+  "editor",
+  "admin",
+];
+
+export function hasAnyAdminAreaRole(
+  roles: string[] | undefined | null,
+): boolean {
+  if (!roles) return false;
+  return ADMIN_AREA_ROLES.some((r) => roles.includes(r));
+}
 
 export function hasRole(
   roles: string[] | undefined | null,

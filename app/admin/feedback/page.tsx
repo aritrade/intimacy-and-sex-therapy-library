@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { LineChartCard, DonutChartCard } from "@/components/admin/charts/Charts";
-import { requireAdminPage } from "@/lib/auth/admin-page-guard";
+import { requireAdminAreaPage } from "@/lib/auth/admin-page-guard";
 import { feedbackView } from "@/lib/admin/dashboard-stats";
 
 export const metadata = { title: "User feedback · Admin" };
@@ -18,7 +18,7 @@ export default async function AdminFeedback({
 }: {
   searchParams: { category?: string; days?: string };
 }) {
-  const guard = await requireAdminPage();
+  const guard = await requireAdminAreaPage();
   if (guard) return guard;
 
   const windowDays = Number(searchParams.days) || 30;

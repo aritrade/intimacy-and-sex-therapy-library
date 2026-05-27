@@ -4,7 +4,7 @@ import {
   BarChartCard,
   Sparkline,
 } from "@/components/admin/charts/Charts";
-import { requireAdminPage } from "@/lib/auth/admin-page-guard";
+import { requireAdminAreaPage } from "@/lib/auth/admin-page-guard";
 import { channelSnapshotView, engagementSnapshot } from "@/lib/admin/dashboard-stats";
 
 export const metadata = { title: "Analytics · Admin" };
@@ -17,7 +17,7 @@ const PLATFORM_LABEL: Record<string, string> = {
 };
 
 export default async function AdminAnalytics() {
-  const guard = await requireAdminPage();
+  const guard = await requireAdminAreaPage();
   if (guard) return guard;
 
   const [engagement, channels] = await Promise.all([
