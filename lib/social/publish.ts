@@ -40,6 +40,13 @@ export type PublishResult = {
   ok: boolean;
   platformPostIds: Record<string, string>;
   failures: Array<{ platform: string; reason: string; detail?: string }>;
+  /**
+   * Platforms the caller asked us to publish to but were already
+   * present in the draft's platformPostIds — we no-op those rather
+   * than double-post. Empty for fresh publishes; non-empty when
+   * the operator re-clicks publish after a partial-success.
+   */
+  skipped: string[];
 };
 
 export type Platform =
@@ -63,6 +70,7 @@ export async function publishDraft(input: PublishInput): Promise<PublishResult> 
       ok: false,
       platformPostIds: {},
       failures: [{ platform: "all", reason: "not_found" }],
+      skipped: [],
     };
   }
   if (!draft.videoUrl || !draft.videoUrl.startsWith("https://")) {
@@ -77,13 +85,24 @@ export async function publishDraft(input: PublishInput): Promise<PublishResult> 
             "Publishing requires a public HTTPS video URL. Configure BLOB_READ_WRITE_TOKEN and re-render.",
         },
       ],
+      skipped: [],
     };
   }
 
-  const platformPostIds: Record<string, string> = {};
+  // Start from whatever's already been posted. A partial-success run
+  // (e.g. YT + FB shipped, IG failed) leaves the row at status=posted
+  // with the two ids saved; this re-publish should ADD the missing
+  // platform, not wipe the prior successes. Skipping platforms already
+  // present also makes the API naturally idempotent — pointing the
+  // button at the same draft twice doesn't double-post.
+  const existing = (draft.platformPostIds as Record<string, string> | null) ?? {};
+  const platformPostIds: Record<string, string> = { ...existing };
+  const skipped: string[] = [];
   const failures: Array<{ platform: string; reason: string; detail?: string }> = [];
 
-  if (input.platforms.includes("instagram")) {
+  if (input.platforms.includes("instagram") && existing.instagram) {
+    skipped.push("instagram");
+  } else if (input.platforms.includes("instagram")) {
     try {
       const r = await publishInstagramReel({
         videoUrl: draft.videoUrl,
@@ -98,7 +117,9 @@ export async function publishDraft(input: PublishInput): Promise<PublishResult> 
       }
     }
   }
-  if (input.platforms.includes("youtube")) {
+  if (input.platforms.includes("youtube") && existing.youtube) {
+    skipped.push("youtube");
+  } else if (input.platforms.includes("youtube")) {
     try {
       // Prefer the HTTPS Blob URL so this works on Vercel (no local FS).
       // CLI/dev callers can still pass a local path if they want.
@@ -117,7 +138,9 @@ export async function publishDraft(input: PublishInput): Promise<PublishResult> 
       }
     }
   }
-  if (input.platforms.includes("facebook") && isFacebookConfigured()) {
+  if (input.platforms.includes("facebook") && existing.facebook) {
+    skipped.push("facebook");
+  } else if (input.platforms.includes("facebook") && isFacebookConfigured()) {
     try {
       const r = await publishFacebookReel({
         videoUrl: draft.videoUrl,
@@ -163,25 +186,48 @@ export async function publishDraft(input: PublishInput): Promise<PublishResult> 
     }
   }
 
-  // Only the *primary* platforms (IG / YT / FB) determine whether the
-  // overall publish flow counts as a success. LinkedIn / Twitter are
-  // best-effort cross-posts; their failure shouldn't flip the draft
-  // to "failed".
+  // Status machine for the row, accounting for the MERGED state
+  // (prior posts + this run):
+  //   - Any primary post (IG / YT / FB) in the merged map -> "posted"
+  //   - Otherwise, if this run produced no posts at all     -> "failed"
+  //   - postedAt: set on first transition to "posted", preserved on
+  //     subsequent partial-recovery runs (don't clobber the original
+  //     publish time when re-running just to fill in a missing IG).
   const primarySuccess =
     !!platformPostIds.instagram ||
     !!platformPostIds.youtube ||
     !!platformPostIds.facebook;
   const anySuccess = primarySuccess || Object.keys(platformPostIds).length > 0;
+  const nextStatus = anySuccess ? "posted" : "failed";
+  const nextPostedAt =
+    anySuccess && !draft.postedAt ? new Date() : (draft.postedAt ?? null);
+
   await db
     .update(contentDrafts)
     .set({
       platformPostIds,
-      status: anySuccess ? "posted" : "failed",
-      postedAt: anySuccess ? new Date() : null,
+      status: nextStatus,
+      postedAt: nextPostedAt,
     })
     .where(eq(contentDrafts.id, input.draftId));
 
-  return { ok: anySuccess, platformPostIds, failures };
+  // Success of THIS call is what the API contract reports. If this
+  // run attempted IG-only and IG failed, we report ok=false even
+  // though the merged draft is still "posted" — the caller asked
+  // about this attempt, not the overall draft state. Skipped
+  // platforms (already-posted) count as no-op success.
+  const thisRunPosted = input.platforms.filter(
+    (p) =>
+      platformPostIds[p] !== undefined && // present in merged map
+      !skipped.includes(p) && // not because we skipped it
+      !(p in existing), // not because it was there before
+  );
+  const thisRunOk =
+    failures.length === 0 ||
+    thisRunPosted.length > 0 ||
+    skipped.length === input.platforms.length;
+
+  return { ok: thisRunOk, platformPostIds, failures, skipped };
 }
 
 export function extractCaption(md: string): string {

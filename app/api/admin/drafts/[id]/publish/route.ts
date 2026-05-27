@@ -61,12 +61,24 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     where: eq(contentDrafts.id, params.id),
   });
   if (!draft) return NextResponse.json({ error: "not_found" }, { status: 404 });
-  if (draft.status !== "editor_reviewed" && draft.status !== "scheduled") {
+  // Allow re-publish on `posted` drafts so we can recover missing
+  // platforms after a partial-success run (publishDraft now skips
+  // platforms already in platformPostIds, so re-clicking publish is
+  // idempotent and additive — only the missing platform actually
+  // makes an API call). Also allow `failed` so the operator can
+  // retry from the UI without manual DB surgery.
+  const PUBLISHABLE_STATUSES = new Set([
+    "editor_reviewed",
+    "scheduled",
+    "posted",
+    "failed",
+  ]);
+  if (!PUBLISHABLE_STATUSES.has(draft.status)) {
     return NextResponse.json(
       {
         error: "not_approved",
         detail:
-          "Draft is not in editor_reviewed state. Both clinician and editor approvals are required before publishing.",
+          "Draft is not approved for publishing. Both clinician and editor approvals are required first.",
         current: draft.status,
       },
       { status: 409 },
