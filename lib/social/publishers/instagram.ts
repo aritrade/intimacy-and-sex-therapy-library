@@ -155,19 +155,48 @@ export async function publishInstagramReel(input: InstagramPublishInput): Promis
     });
     const publishJson = (await publishRes.json()) as
       | { id: string }
-      | { error: { message: string } };
+      | {
+          error: {
+            message?: string;
+            error_user_title?: string;
+            error_user_msg?: string;
+            code?: number;
+            error_subcode?: number;
+            is_transient?: boolean;
+          };
+        };
     if ("id" in publishJson) {
       onProgress("finalising", { pct: 100, note: "Published" });
       return { postId: publishJson.id };
     }
-    const errMsg = "error" in publishJson ? publishJson.error.message : "unknown";
+    const err = "error" in publishJson ? publishJson.error : undefined;
+    const errMsg = err?.message ?? "unknown";
     lastError = errMsg;
-    // Heuristic: anything that mentions "not ready" / "still processing"
-    // / "in progress" / "try again" is a transient transcoding-not-done
-    // signal — back off and retry. Anything else (auth, validation,
-    // duplicate-post, rate-limit) is terminal — fail fast so the caller
-    // surfaces the actual issue instead of timing out at MAX_RETRIES.
-    const transient = /not ready|still processing|in progress|try again|please retry/i.test(errMsg);
+    // Transient detection — Meta returns the "media still transcoding"
+    // signal in MULTIPLE shapes and we need to catch all of them or
+    // we'll give up after attempt 1 on a perfectly normal slow encode.
+    // Sources of truth (any one of these = transient, back off and retry):
+    //   - error.code 9007 (legacy "media not available")
+    //   - error.error_subcode 2207027 (newer "transcoding in progress",
+    //     observed 2026-05-27 on draft 6cc33733)
+    //   - error.message containing the legacy "Media ID is not available"
+    //   - error.message / error_user_title / error_user_msg matching
+    //     any of: not ready, still processing, in progress, try again,
+    //     please retry, please wait
+    // Note: we DELIBERATELY ignore Meta's own `is_transient` flag here.
+    // Meta sets is_transient=false on 2207027 even though the
+    // error_user_msg literally tells the caller "wait a moment". Their
+    // flag is unreliable; the heuristic below matches observed reality.
+    const hintText = [err?.message, err?.error_user_title, err?.error_user_msg]
+      .filter(Boolean)
+      .join(" | ");
+    const transient =
+      err?.code === 9007 ||
+      err?.error_subcode === 2207027 ||
+      /media id is not available/i.test(hintText) ||
+      /not ready|still processing|in progress|try again|please retry|please wait/i.test(
+        hintText,
+      );
     if (!transient) {
       throw new PublisherRefusal("publish_failed", JSON.stringify(publishJson));
     }
