@@ -86,6 +86,44 @@ export function DraftReviewActions({
   const [publishingPlatforms, setPublishingPlatforms] = useState<
     Array<"instagram" | "youtube" | "facebook"> | null
   >(null);
+  const [renderMessage, setRenderMessage] = useState<string | null>(null);
+
+  async function triggerRender() {
+    const verb = draft.videoUrl ? "Re-render" : "Render";
+    const confirmMsg = draft.videoUrl
+      ? "Re-render this draft on GitHub Actions? The current video URL stays live until the new render completes (~3 min)."
+      : "Trigger a render on GitHub Actions? Takes ~3 min.";
+    if (!window.confirm(confirmMsg)) return;
+    setBusy("render");
+    setError(null);
+    setRenderMessage(null);
+    try {
+      const res = await fetch(`/api/admin/drafts/${draft.id}/render`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const json = (await res.json().catch(() => null)) as {
+        ok?: boolean;
+        runsUrl?: string;
+        error?: string;
+        detail?: string;
+      } | null;
+      if (!res.ok || !json?.ok) {
+        setError(
+          json?.detail ?? json?.error ?? `${verb} failed (HTTP ${res.status})`,
+        );
+      } else {
+        setRenderMessage(
+          json.runsUrl
+            ? `${verb} dispatched. Watch on GH Actions, then refresh in ~3 min.`
+            : `${verb} dispatched. Refresh in ~3 min.`,
+        );
+      }
+    } finally {
+      setBusy(null);
+    }
+  }
 
   function startPublish() {
     if (!confirm) {
@@ -156,6 +194,34 @@ export function DraftReviewActions({
         >
           {busy === "editor" ? "Approving…" : "Editor approve"}
         </button>
+      </div>
+
+      <div className="mt-4 rounded-xl border border-border bg-surface p-3">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <h3 className="font-serif text-sm text-ink-900">Render</h3>
+            <p className="text-xs text-ink-600 mt-0.5">
+              {draft.videoUrl
+                ? "A rendered video already exists. Re-rendering overwrites it after the GH Action completes (2-3 min)."
+                : "No video yet. Trigger a render on GitHub Actions (2-3 min). The hourly :53 cron also picks this up automatically."}
+            </p>
+            {renderMessage && (
+              <p className="mt-1.5 text-xs text-accent">{renderMessage}</p>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={triggerRender}
+            disabled={busy === "render"}
+            className="pill text-xs"
+          >
+            {busy === "render"
+              ? "Dispatching…"
+              : draft.videoUrl
+                ? "Re-render"
+                : "Render"}
+          </button>
+        </div>
       </div>
 
       {capabilities.requestChanges && (
