@@ -35,19 +35,26 @@ export type ScriptStyle =
   /** 16:9 long-form YouTube essay (3–8 minutes). */
   | "long_form_essay";
 
+/**
+ * Generous max lengths on the wire so LLM overshoot doesn't throw the
+ * entire response away on AI_TypeValidationError. The strict caps
+ * (160/220/600/2200) are enforced in code via `truncateScript()` after
+ * the LLM returns, which lets us recover the script when the model is
+ * 5-30% over budget instead of failing the whole pipeline.
+ */
 export const ScriptSchema = z.object({
-  hook: z.string().min(8).max(160).describe("First-line hook, max 160 chars."),
+  hook: z.string().min(8).max(400).describe("First-line hook, target <=160 chars."),
   body: z
     .array(
       z.object({
-        text: z.string().min(4).max(600),
+        text: z.string().min(4).max(1200),
         seconds: z.number().min(2).max(60),
       }),
     )
     .min(2)
     .max(20),
-  cta: z.string().min(8).max(220).describe("A non-pushy call-to-action."),
-  caption: z.string().max(2200).describe("Caption for IG/YT description, with hashtags on a separate line."),
+  cta: z.string().min(8).max(500).describe("A non-pushy call-to-action, target <=220 chars."),
+  caption: z.string().max(3500).describe("Caption for IG/YT description, with hashtags on a separate line."),
   // Loose schema by design — LLMs (esp. Gemma + Llama 3) routinely emit
   // hashtags without the leading `#` even when the schema description
   // says otherwise. Vercel AI SDK's `generateObject` validates the raw
@@ -58,6 +65,45 @@ export const ScriptSchema = z.object({
   citationLine: z.string().nullable().describe("If a source was provided, the citation line displayed on screen."),
   durationSeconds: z.number().min(15).max(600),
 });
+
+/** Strict caps applied post-generation (the schema is generous on purpose). */
+const STRICT_CAPS = {
+  hook: 160,
+  cta: 220,
+  bodyText: 600,
+  caption: 2200,
+} as const;
+
+/**
+ * Truncate at a sentence boundary if possible, else hard-truncate with
+ * an ellipsis. Used to bring overshooting LLM output back inside the
+ * caps the downstream consumers (SSML, on-screen lower-thirds, IG
+ * caption box) actually require.
+ */
+function smartTruncate(s: string, max: number): string {
+  if (s.length <= max) return s;
+  const slice = s.slice(0, max);
+  const lastStop = Math.max(
+    slice.lastIndexOf(". "),
+    slice.lastIndexOf("! "),
+    slice.lastIndexOf("? "),
+  );
+  if (lastStop > max * 0.6) return slice.slice(0, lastStop + 1).trim();
+  return slice.replace(/\s+\S*$/, "").trim() + "…";
+}
+
+function truncateScript(s: GeneratedScript): GeneratedScript {
+  return {
+    ...s,
+    hook: smartTruncate(s.hook, STRICT_CAPS.hook),
+    cta: smartTruncate(s.cta, STRICT_CAPS.cta),
+    caption: smartTruncate(s.caption, STRICT_CAPS.caption),
+    body: s.body.map((b) => ({
+      ...b,
+      text: smartTruncate(b.text, STRICT_CAPS.bodyText),
+    })),
+  };
+}
 
 const HASHTAG_RX = /^#[\p{L}\p{N}_]{2,40}$/u;
 
@@ -276,9 +322,9 @@ The previous attempt totalled ${wordsFirst} words across all chapters, which is 
     }
   }
 
-  return {
+  return truncateScript({
     ...object,
     hashtags: normaliseHashtags(object.hashtags),
     durationSeconds: targetSeconds,
-  };
+  });
 }
