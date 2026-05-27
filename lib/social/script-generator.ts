@@ -24,6 +24,12 @@ import { z } from "zod";
 import { chatModel, isLlmConfigured } from "@/lib/ai/llm";
 import { REFUSAL_CATEGORIES, detectCrisis } from "@/lib/safety/guardrails";
 import { NARRATOR } from "@/lib/brand/persona";
+import {
+  playbookPrompt,
+  structuredFeedbackPrompt,
+  type ScriptStyleId,
+} from "@/lib/brand/playbook";
+import { critiqueAndMaybeRewrite } from "@/lib/social/script-critique";
 
 export type ScriptStyle =
   /** 9:16 typography reel — original mood-only template. */
@@ -267,35 +273,30 @@ ${refusalList}
 CITATION RULE
 ${input.resource
   ? "Include a 1-line on-screen citation (citationLine field) referencing the supplied source."
-  : "If you cannot ground a factual claim, return a soft, non-claim-making hook (e.g., 'A reminder, not a remedy:')."}`;
+  : "If you cannot ground a factual claim, return a soft, non-claim-making hook (e.g., 'A reminder, not a remedy:')."}
+${playbookPrompt({ style: style as ScriptStyleId })}`;
 
   // Reviewer feedback context. When present, the LLM is explicitly told
   // this is a REGENERATION and that the previous attempt was rejected.
-  // Each prior note gets surfaced verbatim so the model can address them
-  // one by one rather than guessing what "improve it" might mean. Notes
-  // are presented in chronological order so the model sees the iteration
-  // trajectory.
+  // Each reviewer reason is converted to an ACTIONABLE DIRECTIVE via
+  // `feedbackToDirective` (see lib/brand/playbook.ts) rather than dumped
+  // as a raw label — the LLM follows imperative-mood instructions much
+  // more reliably than it follows category names. The reviewer's
+  // verbatim note is appended as supporting context.
   const feedbackBlock = input.reviewerFeedback
     ? `
 
-⚠ REGENERATION REQUEST — the previous version of this script was rejected by a reviewer. Read each note carefully and address ALL of them. Do not repeat the same mistakes.
+⚠ REGENERATION REQUEST — the previous version of this script was rejected by a reviewer. Read each directive carefully and execute ALL of them. Do not repeat the same mistakes.
 
 PREVIOUS ATTEMPT (the one that was rejected):
 ${input.reviewerFeedback.previousScriptMd.slice(0, 2000)}
-
-REVIEWER NOTES (newest last; each must be addressed):
-${input.reviewerFeedback.notes
-  .map((n, i) => {
-    const noteText = n.notes ? n.notes : "(no free-text note — just the reason tag)";
-    return `  ${i + 1}. [${n.reason}] ${noteText}`;
-  })
-  .join("\n")}
+${structuredFeedbackPrompt(input.reviewerFeedback.notes)}
 
 When rewriting:
   - Keep what worked (structure, length envelope, brand voice).
-  - Specifically fix every reviewer concern listed above.
-  - If a note says "rewrite completely", treat earlier creative choices as off-limits and reach for a fresh angle, vocabulary, and pacing.
-  - Never repeat a phrase from the previous attempt that a note specifically called out.`
+  - Execute every directive above. Each is a specific change, not a category label.
+  - If a note says "rewrite completely" (duplicate_content), treat earlier creative choices as off-limits and reach for a fresh angle, vocabulary, and pacing.
+  - Never repeat a phrase from the previous attempt that a reviewer note specifically called out.`
     : "";
 
   const prompt = `BRIEF:\n${input.brief}\n${sourceHint}${feedbackBlock}\nReturn JSON matching the schema. Keep all language clear, warm, and judgment-free.`;
@@ -335,6 +336,29 @@ The previous attempt totalled ${wordsFirst} words across all chapters, which is 
       object = diff(wordsSecond) < diff(wordsFirst) ? second.object : object;
     }
   }
+
+  // Optional self-critique pass. Off by default (SCRIPT_CRITIQUE=true to
+  // enable). When enabled, the LLM grades its own draft on 4 axes
+  // (clinical accuracy, brand voice fit, hook strength, CTA pull) and
+  // rewrites once if any axis falls below threshold. Adds 5-15s of
+  // latency per generation — gated so we can A/B against the baseline
+  // before making it default.
+  const critiqueResult = await critiqueAndMaybeRewrite(object, {
+    systemPrompt: system,
+    originalPrompt: prompt,
+    rewriteScript: async (extraGuidance: string) => {
+      const rewritePrompt = `${prompt}\n\n${extraGuidance}`;
+      const r = await generateObject({
+        model: chatModel(),
+        system,
+        prompt: rewritePrompt,
+        schema: ScriptSchema,
+        temperature: 0.5,
+      });
+      return r.object;
+    },
+  });
+  object = critiqueResult.script;
 
   // Belt-and-braces post-check
   const flat = [object.hook, object.cta, object.caption, ...object.body.map((b) => b.text)]
