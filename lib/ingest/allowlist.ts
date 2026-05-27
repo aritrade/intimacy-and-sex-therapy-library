@@ -32,6 +32,15 @@ export type AllowlistSource = {
   url: string;
   trustTier: AllowlistTier;
   notes?: string;
+  /**
+   * Lowercase substrings that count as a match against an upstream
+   * record's publisher / channel / source field. The discovery agent
+   * uses this when a third-party API (Open Library, Crossref) gives us
+   * publisher strings that differ from `name` in punctuation, suffix
+   * ("Press", "Publishing", "Inc."), or region. Always provide at least
+   * the canonical short brand name in lowercase.
+   */
+  aliases?: string[];
 };
 
 export const ALLOWLIST: AllowlistSource[] = [
@@ -169,13 +178,13 @@ export const ALLOWLIST: AllowlistSource[] = [
   // surface a book with cover art, ToC, blurb, curator notes, and links to
   // the publisher / Google Books / WorldCat / Libby.
   // ---------------------------------------------------------------------
-  { slug: "norton", name: "W. W. Norton (publisher)", kind: "publisher", url: "https://wwnorton.com/", trustTier: "tier_2", notes: "Metadata + links only." },
-  { slug: "guilford", name: "Guilford Press", kind: "publisher", url: "https://www.guilford.com/", trustTier: "tier_2", notes: "Metadata + links only." },
-  { slug: "routledge", name: "Routledge / Taylor & Francis", kind: "publisher", url: "https://www.routledge.com/", trustTier: "tier_2", notes: "Metadata + links only." },
-  { slug: "harpercollins", name: "HarperCollins (publisher)", kind: "publisher", url: "https://www.harpercollins.com/", trustTier: "tier_2", notes: "Metadata + links only." },
-  { slug: "simon-schuster", name: "Simon & Schuster (publisher)", kind: "publisher", url: "https://www.simonandschuster.com/", trustTier: "tier_2", notes: "Metadata + links only." },
-  { slug: "rowman-littlefield", name: "Rowman & Littlefield (publisher)", kind: "publisher", url: "https://rowman.com/", trustTier: "tier_2", notes: "Metadata + links only." },
-  { slug: "crucible4points", name: "Crucible 4 Points — Dr. David Schnarch (author site)", kind: "publisher", url: "https://www.crucible4points.com/", trustTier: "tier_2", notes: "Author's official site for the Crucible Approach books." },
+  { slug: "norton", name: "W. W. Norton (publisher)", kind: "publisher", url: "https://wwnorton.com/", trustTier: "tier_2", notes: "Metadata + links only.", aliases: ["w. w. norton", "w.w. norton", "ww norton", "norton", "norton & company"] },
+  { slug: "guilford", name: "Guilford Press", kind: "publisher", url: "https://www.guilford.com/", trustTier: "tier_2", notes: "Metadata + links only.", aliases: ["guilford", "guilford press", "guilford publications"] },
+  { slug: "routledge", name: "Routledge / Taylor & Francis", kind: "publisher", url: "https://www.routledge.com/", trustTier: "tier_2", notes: "Metadata + links only.", aliases: ["routledge", "taylor & francis", "taylor and francis"] },
+  { slug: "harpercollins", name: "HarperCollins (publisher)", kind: "publisher", url: "https://www.harpercollins.com/", trustTier: "tier_2", notes: "Metadata + links only.", aliases: ["harpercollins", "harper collins", "harper & row"] },
+  { slug: "simon-schuster", name: "Simon & Schuster (publisher)", kind: "publisher", url: "https://www.simonandschuster.com/", trustTier: "tier_2", notes: "Metadata + links only.", aliases: ["simon & schuster", "simon and schuster", "atria"] },
+  { slug: "rowman-littlefield", name: "Rowman & Littlefield (publisher)", kind: "publisher", url: "https://rowman.com/", trustTier: "tier_2", notes: "Metadata + links only.", aliases: ["rowman & littlefield", "rowman and littlefield", "lexington books"] },
+  { slug: "crucible4points", name: "Crucible 4 Points — Dr. David Schnarch (author site)", kind: "publisher", url: "https://www.crucible4points.com/", trustTier: "tier_2", notes: "Author's official site for the Crucible Approach books.", aliases: ["crucible 4 points", "schnarch"] },
 
   // ---------------------------------------------------------------------
   // Tier 1: video channels — we ingest transcripts via the official
@@ -216,4 +225,27 @@ export function isAllowlisted(hostname: string): boolean {
 
 export function isHardBlocked(hostname: string): boolean {
   return HARD_BLOCKLIST.some((re) => re.test(hostname));
+}
+
+/**
+ * Resolve an upstream publisher string (e.g. from Open Library or
+ * Crossref) to the corresponding allowlist entry. Matches the lowercase
+ * field against each entry's `aliases` first (most reliable), then the
+ * brand-token portion of `name` (substring containment, defensive
+ * fallback). Returns `null` when the publisher isn't allowlisted.
+ */
+export function publisherToAllowlist(
+  publisherField: string | null | undefined,
+): AllowlistSource | null {
+  if (!publisherField) return null;
+  const p = publisherField.toLowerCase().trim();
+  if (!p) return null;
+  for (const src of ALLOWLIST) {
+    if (src.kind !== "publisher") continue;
+    if (src.aliases && src.aliases.some((a) => p.includes(a))) return src;
+    // Fallback: match the slug as a token (e.g. "guilford" appears in any
+    // string Open Library returns for Guilford Press).
+    if (p.includes(src.slug.toLowerCase())) return src;
+  }
+  return null;
 }

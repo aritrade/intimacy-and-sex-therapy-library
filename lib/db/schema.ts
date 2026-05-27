@@ -111,6 +111,15 @@ export const resources = pgTable(
     summary: text("summary"),
     curatorNotes: text("curator_notes"),
     isPublished: boolean("is_published").notNull().default(false),
+    /**
+     * When true, the freshness agent skips this resource entirely — it
+     * won't emit `needs_refresh` proposals regardless of how old the
+     * publication date is. Use for genuinely evergreen reference works
+     * (foundational textbooks, AASECT position papers that haven't been
+     * superseded, etc.). Defaulting to false keeps the existing
+     * behaviour for everything else.
+     */
+    isEvergreen: boolean("is_evergreen").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   },

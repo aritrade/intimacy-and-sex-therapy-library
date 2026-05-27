@@ -24,23 +24,34 @@ import { submitProposal } from "./proposals";
 
 const PROPOSED_BY = "agent:freshness";
 
+/**
+ * Per-kind staleness thresholds in DAYS. Reasoning:
+ *
+ *   - Clinical guidelines, articles, and papers: 5 years. Most sex-therapy
+ *     research published in the last decade is still cited as primary
+ *     evidence; ~yearly flagging produced too many false positives.
+ *   - Books and monographs: 15 years. Foundational sex-therapy texts (Kaplan,
+ *     Masters & Johnson follow-ups, Schnarch, Perel, Nagoski) routinely
+ *     remain authoritative for 20+ years.
+ *   - Video / podcast: 7 years. Production style ages faster than text.
+ *   - Default: 5 years.
+ *
+ * Individual resources can be exempted entirely via `resources.is_evergreen`.
+ */
 const STALENESS_DAYS_BY_KIND: Record<string, number> = {
-  // Clinical / research items rotate fastest.
-  article: 18 * 30,
-  paper: 18 * 30,
-  guideline: 12 * 30,
-  // Books & full-length resources slow down significantly.
-  book: 7 * 365,
-  monograph: 7 * 365,
-  // Multimedia drifts in usefulness somewhere in between.
-  video: 3 * 365,
-  podcast: 3 * 365,
-  // Default fallback.
-  default: 24 * 30,
+  article: 5 * 365,
+  paper: 5 * 365,
+  guideline: 5 * 365,
+  book: 15 * 365,
+  monograph: 15 * 365,
+  video: 7 * 365,
+  podcast: 7 * 365,
+  default: 5 * 365,
 };
 
 export type FreshnessSummary = {
   scanned: number;
+  skippedEvergreen: number;
   staleByPublishedAt: number;
   reviewOverdue: number;
   proposalsEmitted: number;
@@ -49,6 +60,7 @@ export type FreshnessSummary = {
 export async function runFreshnessAgent(): Promise<FreshnessSummary> {
   const summary: FreshnessSummary = {
     scanned: 0,
+    skippedEvergreen: 0,
     staleByPublishedAt: 0,
     reviewOverdue: 0,
     proposalsEmitted: 0,
@@ -56,19 +68,26 @@ export async function runFreshnessAgent(): Promise<FreshnessSummary> {
 
   const now = new Date();
 
-  // 1) Stale by publishedAt
+  // 1) Stale by publishedAt — restricted to non-evergreen published rows.
+  // Evergreen items still appear in the catalog; we just don't badger
+  // the admin about them every morning.
   const rows = await db
     .select({
       id: resources.id,
       title: resources.title,
       kind: resources.kind,
       publishedAt: resources.publishedAt,
+      isEvergreen: resources.isEvergreen,
     })
     .from(resources)
     .where(eq(resources.isPublished, true));
 
   for (const r of rows) {
     summary.scanned += 1;
+    if (r.isEvergreen) {
+      summary.skippedEvergreen += 1;
+      continue;
+    }
     if (!r.publishedAt) continue;
     const ageDays = (now.getTime() - new Date(r.publishedAt).getTime()) / 86_400_000;
     const threshold = STALENESS_DAYS_BY_KIND[r.kind] ?? STALENESS_DAYS_BY_KIND.default;

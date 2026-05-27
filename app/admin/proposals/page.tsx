@@ -19,6 +19,8 @@ import { db } from "@/lib/db/client";
 import { resourceProposals, resources } from "@/lib/db/schema";
 import { requireAdminPage } from "@/lib/auth/admin-page-guard";
 import { ProposalCard } from "@/components/admin/ProposalCard";
+import { BulkRejectButton } from "@/components/admin/BulkRejectButton";
+import { RunAgentButton } from "@/components/admin/RunAgentButton";
 
 export const metadata = { title: "Proposals · Admin" };
 export const dynamic = "force-dynamic";
@@ -99,6 +101,11 @@ export default async function ProposalsPage({
           here instead of mutating the catalog directly. You approve, reject, or
           edit each one.
         </p>
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <RunAgentButton agent="discovery" />
+          <RunAgentButton agent="link-health" />
+          <RunAgentButton agent="freshness" />
+        </div>
       </header>
 
       <nav className="mb-6 flex flex-wrap gap-2 text-sm">
@@ -127,6 +134,24 @@ export default async function ProposalsPage({
           ))}
         </span>
       </nav>
+
+      {filterStatus === "open" && rows.length > 0 && (
+        <div className="mb-4 card p-3 text-xs text-ink-600 flex flex-wrap items-center gap-3">
+          <span>
+            Bulk action — applies to the {rows.length} open proposal(s)
+            {filterKind ? <> of kind <code>{filterKind}</code></> : null}:
+          </span>
+          <BulkRejectButton
+            filter={{ kind: filterKind ?? null }}
+            visibleCount={rows.length}
+          />
+          <span className="text-ink-400">
+            Tip: <em>Mark evergreen</em> on a specific refresh proposal is usually a
+            better fix than bulk-rejecting — it prevents the same item being
+            re-flagged tomorrow.
+          </span>
+        </div>
+      )}
 
       {rows.length === 0 ? (
         <div className="card p-8 text-sm text-ink-500">

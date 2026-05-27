@@ -1,0 +1,1 @@
+ALTER TABLE "resources" ADD COLUMN "is_evergreen" boolean DEFAULT false NOT NULL;

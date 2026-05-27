@@ -139,7 +139,7 @@ export function ProposalCard({ proposal: p }: { proposal: Proposal }) {
       {done ? (
         <p className="text-xs text-accent">{done}</p>
       ) : (
-        <div className="flex gap-2 pt-1">
+        <div className="flex gap-2 pt-1 flex-wrap items-center">
           <button
             onClick={() => decide("approve")}
             disabled={busy}
@@ -154,6 +154,15 @@ export function ProposalCard({ proposal: p }: { proposal: Proposal }) {
           >
             Reject
           </button>
+          {p.kind === "needs_refresh" && p.resourceId && (
+            <MarkEvergreenButton
+              resourceId={p.resourceId}
+              busy={busy}
+              setBusy={setBusy}
+              setDone={setDone}
+              setError={setError}
+            />
+          )}
         </div>
       )}
 
@@ -163,6 +172,66 @@ export function ProposalCard({ proposal: p }: { proposal: Proposal }) {
         </p>
       )}
     </div>
+  );
+}
+
+function MarkEvergreenButton({
+  resourceId,
+  busy,
+  setBusy,
+  setDone,
+  setError,
+}: {
+  resourceId: string;
+  busy: boolean;
+  setBusy: (b: boolean) => void;
+  setDone: (s: string | null) => void;
+  setError: (s: string | null) => void;
+}) {
+  const router = useRouter();
+  async function mark() {
+    if (busy) return;
+    if (
+      !window.confirm(
+        "Mark this resource as evergreen? The freshness agent will stop flagging it and any other open refresh proposals for this resource will be auto-rejected.",
+      )
+    ) {
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/admin/resources/${resourceId}/evergreen`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isEvergreen: true, alsoRejectOpenRefreshProposals: true }),
+      });
+      const j = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        rejectedProposals?: number;
+      };
+      if (!res.ok) {
+        setError(j.error ?? `Failed (${res.status})`);
+      } else {
+        setDone(
+          `Marked evergreen · ${j.rejectedProposals ?? 0} open refresh proposal(s) auto-rejected.`,
+        );
+        router.refresh();
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <button
+      type="button"
+      onClick={mark}
+      disabled={busy}
+      className="pill-teal text-[11px]"
+      title="Don't flag this resource as stale again — it's a foundational/evergreen reference."
+    >
+      Mark evergreen
+    </button>
   );
 }
 
