@@ -290,6 +290,25 @@ export default async function AdminHome() {
               Generate, review, and publish short-form drafts.
             </p>
           </Link>
+          <Link href="/admin/analytics" className="card card-hover p-5 block">
+            <h3 className="font-serif text-base text-ink-900">Analytics</h3>
+            <p className="mt-2 text-sm text-ink-600">
+              Engagement, follower growth, top posts, and a link to Vercel
+              visitor + country analytics.
+            </p>
+          </Link>
+          <Link href="/admin/feedback" className="card card-hover p-5 block">
+            <h3 className="font-serif text-base text-ink-900">User feedback</h3>
+            <p className="mt-2 text-sm text-ink-600">
+              Public homepage submissions — charts, filters, CSV export.
+            </p>
+          </Link>
+          <Link href="/admin/subscribers" className="card card-hover p-5 block">
+            <h3 className="font-serif text-base text-ink-900">Subscribers</h3>
+            <p className="mt-2 text-sm text-ink-600">
+              Newsletter growth chart + Buttondown live list + CSV export.
+            </p>
+          </Link>
           <Link href="/admin/proposals" className="card card-hover p-5 block">
             <h3 className="font-serif text-base text-ink-900">Sync proposals</h3>
             <p className="mt-2 text-sm text-ink-600">

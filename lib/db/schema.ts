@@ -831,3 +831,80 @@ export const resourceProposals = pgTable(
     byResource: index("resource_proposals_resource_idx").on(t.resourceId),
   }),
 );
+
+// ---------------------------------------------------------------------------
+// User feedback (public homepage form)
+//
+// Unlike the email subscribe flow — which keeps PII out of our DB and only
+// stores a hashed fingerprint in audit_log — this table DOES store the
+// submitter's email + message in plaintext. The user explicitly opted in
+// by submitting; the privacy notice on the form makes this clear. We hash
+// the IP for rate-limit + abuse-detection without persisting raw IP.
+// ---------------------------------------------------------------------------
+
+export const feedbackCategory = pgEnum("feedback_category", [
+  "improvement",
+  "praise",
+  "bug",
+  "other",
+]);
+
+export const userFeedback = pgTable(
+  "user_feedback",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    /** Submitter email. Required because the user asked to be contactable. */
+    email: varchar("email", { length: 320 }).notNull(),
+    message: text("message").notNull(),
+    category: feedbackCategory("category").notNull().default("other"),
+    /** BCP-47 tag captured from the form so we can chart per-locale signal. */
+    locale: varchar("locale", { length: 8 }),
+    /** sha256 of IP + a server-side pepper, truncated. Used for rate limit. */
+    ipHash: varchar("ip_hash", { length: 32 }),
+    /** Optional: source page (homepage, library, etc.) for funnel context. */
+    sourcePath: varchar("source_path", { length: 200 }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    byCreatedAt: index("user_feedback_created_at_idx").on(t.createdAt),
+    byCategory: index("user_feedback_category_idx").on(t.category, t.createdAt),
+    byEmail: index("user_feedback_email_idx").on(t.email),
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// Channel-level metrics (subscriber/follower counts per platform per day)
+//
+// post_metrics tracks per-post engagement; channel_metrics tracks the
+// account-wide counter (subscriber count, follower count, page like count).
+// One row per platform per day = trivially queryable for a "subs over time"
+// line chart. The metrics poller writes one row per platform per run; the
+// admin/analytics dashboard reads the most recent + a 90-day window.
+// ---------------------------------------------------------------------------
+
+export const channelMetrics = pgTable(
+  "channel_metrics",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    platform: varchar("platform", { length: 16 }).notNull(), // youtube | instagram | facebook
+    /** Public account id (channel id / IG user id / FB page id). */
+    accountId: varchar("account_id", { length: 96 }).notNull(),
+    /** Friendly handle for display only. */
+    handle: varchar("handle", { length: 64 }),
+    /** Subscriber / follower / page-like count. Whichever the platform exposes. */
+    followers: integer("followers").notNull().default(0),
+    /** Total uploads / posts (where available). */
+    posts: integer("posts").notNull().default(0),
+    /** Lifetime views (YouTube exposes this; IG/FB do not). 0 when unknown. */
+    totalViews: bigint("total_views", { mode: "number" }).notNull().default(0),
+    /** Raw response stashed for forensics; empty object when caller didn't pass one. */
+    raw: jsonb("raw").$type<Record<string, unknown>>().default(sql`'{}'::jsonb`),
+    pulledAt: timestamp("pulled_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    byPlatformAndTime: index("channel_metrics_platform_time_idx").on(
+      t.platform,
+      t.pulledAt,
+    ),
+  }),
+);

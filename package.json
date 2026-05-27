@@ -39,6 +39,7 @@
     "@remotion/captions": "^4.0.465",
     "@remotion/cli": "^4.0.465",
     "@remotion/renderer": "^4.0.465",
+    "@vercel/analytics": "^2.0.1",
     "@vercel/blob": "^2.4.0",
     "ai": "^4.0.0",
     "clsx": "^2.1.1",
@@ -51,6 +52,7 @@
     "postgres": "^3.4.5",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "recharts": "^3.8.1",
     "remotion": "^4.0.465",
     "tailwind-merge": "^2.5.4",
     "zod": "^3.23.8"

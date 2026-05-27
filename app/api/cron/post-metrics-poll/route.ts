@@ -12,7 +12,10 @@
  */
 
 import { NextResponse } from "next/server";
-import { pollAllPostMetrics } from "@/lib/social/metrics-poller";
+import {
+  pollAllChannelMetrics,
+  pollAllPostMetrics,
+} from "@/lib/social/metrics-poller";
 import { recordAudit } from "@/lib/observability/audit";
 import { log } from "@/lib/observability/logger";
 
@@ -42,7 +45,12 @@ async function handle(req: Request): Promise<NextResponse> {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  const summary = await pollAllPostMetrics({ limit: 100, windowDays: 60 });
+  // Run both polls. They're independent — channel poll being unconfigured
+  // doesn't stop the per-post poll from running, and vice versa.
+  const [summary, channelSummary] = await Promise.all([
+    pollAllPostMetrics({ limit: 100, windowDays: 60 }),
+    pollAllChannelMetrics(),
+  ]);
 
   void recordAudit({
     actor: "cron:vercel",
@@ -52,8 +60,10 @@ async function handle(req: Request): Promise<NextResponse> {
       updated: summary.updated,
       takedowns: summary.takedowns,
       failures: summary.failures.length,
+      channelPulled: channelSummary.pulled,
+      channelFailed: channelSummary.failed,
     },
   });
 
-  return NextResponse.json({ summary });
+  return NextResponse.json({ summary, channelSummary });
 }

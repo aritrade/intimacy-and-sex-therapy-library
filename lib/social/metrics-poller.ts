@@ -20,7 +20,7 @@
 
 import { eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { contentDrafts, postMetrics } from "@/lib/db/schema";
+import { contentDrafts, postMetrics, channelMetrics } from "@/lib/db/schema";
 import { log } from "@/lib/observability/logger";
 import { recordAudit } from "@/lib/observability/audit";
 
@@ -379,4 +379,160 @@ async function safeText(res: Response): Promise<string> {
   } catch {
     return "";
   }
+}
+
+// ---------------------------------------------------------------------------
+// Channel-level metrics (subscriber / follower counts per platform)
+//
+// Independent of per-post polling — runs daily, writes one row per
+// platform to channel_metrics. The admin/analytics dashboard charts
+// follower growth from the resulting time series.
+//
+// All three calls fail closed: a missing env var, a 4xx, or a network
+// error logs a warning and that platform is just absent from the day's
+// snapshot.
+// ---------------------------------------------------------------------------
+
+export type ChannelSnapshot = {
+  platform: "youtube" | "instagram" | "facebook";
+  accountId: string;
+  handle?: string;
+  followers: number;
+  posts: number;
+  totalViews: number;
+  raw: Record<string, unknown>;
+};
+
+export type ChannelPollSummary = {
+  pulled: number;
+  failed: number;
+  failures: Array<{ platform: string; reason: string; detail?: string }>;
+};
+
+export async function pollAllChannelMetrics(): Promise<ChannelPollSummary> {
+  const summary: ChannelPollSummary = { pulled: 0, failed: 0, failures: [] };
+  if (!process.env.DATABASE_URL) {
+    log.warn("channel_poll_skipped", { reason: "DATABASE_URL not set" });
+    return summary;
+  }
+
+  const tasks: Array<{ name: ChannelSnapshot["platform"]; fn: () => Promise<ChannelSnapshot | null> }> = [
+    { name: "youtube", fn: pullYouTubeChannel },
+    { name: "instagram", fn: pullInstagramChannel },
+    { name: "facebook", fn: pullFacebookPage },
+  ];
+
+  for (const t of tasks) {
+    try {
+      const snap = await t.fn();
+      if (!snap) {
+        summary.failures.push({ platform: t.name, reason: "not_configured" });
+        summary.failed++;
+        continue;
+      }
+      await db.insert(channelMetrics).values(snap);
+      summary.pulled++;
+    } catch (e) {
+      summary.failed++;
+      summary.failures.push({
+        platform: t.name,
+        reason: "exception",
+        detail: String((e as Error).message).slice(0, 200),
+      });
+    }
+  }
+
+  log.info("channel_poll_done", summary);
+  return summary;
+}
+
+async function pullYouTubeChannel(): Promise<ChannelSnapshot | null> {
+  const apiKey = process.env.YOUTUBE_API_KEY;
+  const oauth = process.env.YT_OAUTH_ACCESS_TOKEN;
+  const channelId = process.env.YOUTUBE_CHANNEL_ID;
+  if (!apiKey && !oauth) return null;
+
+  // If a channel id is configured we use it; otherwise we use `mine=true`
+  // with OAuth (the API ignores `mine` when only a key is supplied so we
+  // need at least one of the two).
+  const url = channelId
+    ? `https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics&id=${encodeURIComponent(channelId)}${apiKey ? `&key=${apiKey}` : ""}`
+    : `https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics&mine=true`;
+  const headers: Record<string, string> = {};
+  if (oauth) headers.Authorization = `Bearer ${oauth}`;
+
+  const res = await fetch(url, { headers });
+  if (!res.ok) throw new Error(`youtube ${res.status}: ${(await safeText(res)).slice(0, 200)}`);
+  const j = (await res.json()) as {
+    items?: Array<{
+      id: string;
+      snippet?: { customUrl?: string; title?: string };
+      statistics?: { subscriberCount?: string; videoCount?: string; viewCount?: string };
+    }>;
+  };
+  const item = j.items?.[0];
+  if (!item) throw new Error("youtube: no items");
+  const stats = item.statistics ?? {};
+  return {
+    platform: "youtube",
+    accountId: item.id,
+    handle: item.snippet?.customUrl ?? item.snippet?.title,
+    followers: numOrZero(stats.subscriberCount),
+    posts: numOrZero(stats.videoCount),
+    totalViews: numOrZero(stats.viewCount),
+    raw: item as unknown as Record<string, unknown>,
+  };
+}
+
+async function pullInstagramChannel(): Promise<ChannelSnapshot | null> {
+  const igUserId = process.env.INSTAGRAM_BUSINESS_ACCOUNT_ID;
+  const token = process.env.META_GRAPH_ACCESS_TOKEN ?? process.env.IG_ACCESS_TOKEN;
+  if (!igUserId || !token) return null;
+
+  const url = `https://graph.facebook.com/${GRAPH_VERSION}/${igUserId}?fields=username,followers_count,follows_count,media_count&access_token=${token}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`ig ${res.status}: ${(await safeText(res)).slice(0, 200)}`);
+  const j = (await res.json()) as {
+    id?: string;
+    username?: string;
+    followers_count?: number;
+    follows_count?: number;
+    media_count?: number;
+  };
+  return {
+    platform: "instagram",
+    accountId: j.id ?? igUserId,
+    handle: j.username,
+    followers: numOrZero(String(j.followers_count ?? 0)),
+    posts: numOrZero(String(j.media_count ?? 0)),
+    totalViews: 0, // IG doesn't expose a lifetime-views counter.
+    raw: j as unknown as Record<string, unknown>,
+  };
+}
+
+async function pullFacebookPage(): Promise<ChannelSnapshot | null> {
+  const pageId = process.env.FACEBOOK_PAGE_ID;
+  const token = process.env.META_GRAPH_ACCESS_TOKEN ?? process.env.FB_PAGE_ACCESS_TOKEN;
+  if (!pageId || !token) return null;
+
+  // followers_count is the modern field name; fan_count is the legacy
+  // "page likes" number — we request both and prefer followers_count.
+  const url = `https://graph.facebook.com/${GRAPH_VERSION}/${pageId}?fields=name,followers_count,fan_count&access_token=${token}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`fb ${res.status}: ${(await safeText(res)).slice(0, 200)}`);
+  const j = (await res.json()) as {
+    id?: string;
+    name?: string;
+    followers_count?: number;
+    fan_count?: number;
+  };
+  return {
+    platform: "facebook",
+    accountId: j.id ?? pageId,
+    handle: j.name,
+    followers: numOrZero(String(j.followers_count ?? j.fan_count ?? 0)),
+    posts: 0, // Page-level "post count" requires a separate edge fetch; skip for now.
+    totalViews: 0,
+    raw: j as unknown as Record<string, unknown>,
+  };
 }

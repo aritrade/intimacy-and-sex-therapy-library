@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { pollAllPostMetrics } from "@/lib/social/metrics-poller";
+import {
+  pollAllChannelMetrics,
+  pollAllPostMetrics,
+} from "@/lib/social/metrics-poller";
 import { recordAudit } from "@/lib/observability/audit";
 import { getActor } from "@/lib/admin/actor";
 import { requireApiAdmin } from "@/lib/auth/api-admin-guard";
@@ -32,7 +35,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "invalid_body", issues: parsed.error.issues }, { status: 400 });
   }
 
-  const summary = await pollAllPostMetrics(parsed.data);
+  const [summary, channelSummary] = await Promise.all([
+    pollAllPostMetrics(parsed.data),
+    pollAllChannelMetrics(),
+  ]);
 
   void recordAudit({
     actor: await getActor(req),
@@ -42,8 +48,10 @@ export async function POST(req: Request) {
       updated: summary.updated,
       takedowns: summary.takedowns,
       failures: summary.failures.length,
+      channelPulled: channelSummary.pulled,
+      channelFailed: channelSummary.failed,
     },
   });
 
-  return NextResponse.json({ summary });
+  return NextResponse.json({ summary, channelSummary });
 }

@@ -5,6 +5,7 @@ import { ContinueReadingShelf } from "@/components/ContinueReadingShelf";
 import { IntakeQuiz } from "@/components/IntakeQuiz";
 import { VideoShelf } from "@/components/VideoShelf";
 import { EmailSignup } from "@/components/EmailSignup";
+import { FeedbackForm } from "@/components/FeedbackForm";
 import { listFeaturedVideos } from "@/lib/db/queries";
 import { currentStrings } from "@/lib/i18n/server";
 
@@ -123,12 +124,13 @@ function Hero({ hasVideos }: { hasVideos: boolean }) {
             </ul>
           </div>
 
-          <aside className="animate-fade-up lg:pt-2" aria-label="Newsletter signup">
+          <aside className="animate-fade-up lg:pt-2 space-y-4" aria-label="Newsletter signup and feedback">
             <EmailSignup
               variant="card"
               title="Get the weekly digest"
               blurb="One short email a week — new explainers, plain-language summaries, and crisis-resource updates. Unsubscribe anytime."
             />
+            <FeedbackForm />
           </aside>
         </div>
       </div>

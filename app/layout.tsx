@@ -5,6 +5,7 @@ import { DisclaimerFooter } from "@/components/DisclaimerFooter";
 import { NavBar } from "@/components/NavBar";
 import { CrisisFab } from "@/components/CrisisFab";
 import { Analytics } from "@/components/Analytics";
+import { Analytics as VercelAnalytics } from "@vercel/analytics/react";
 import { PWARegister } from "@/components/PWARegister";
 import { AuthMenu } from "@/components/AuthMenu";
 
@@ -73,6 +74,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <DisclaimerFooter />
         <CrisisFab />
         <Analytics />
+        {/* Vercel Web Analytics — automatic page-view tracking with
+            country/device breakdown viewable in the Vercel dashboard
+            (free tier). Plausible above continues to handle custom
+            client-side trackEvent() calls. */}
+        <VercelAnalytics />
         <PWARegister />
       </body>
     </html>
