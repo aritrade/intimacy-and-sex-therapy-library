@@ -136,6 +136,16 @@ export type ScriptInput = {
   durationSeconds: number;
   style?: ScriptStyle;
   resource?: { title: string; authors?: string[]; year?: number; sourceName: string; url: string };
+  /**
+   * Optional: reviewer feedback that the LLM must address. Used by the
+   * "Apply notes & rewrite" action — the previous script (which the
+   * reviewer rejected) is passed in along with each accumulated note
+   * so the regeneration is informed by every iteration so far.
+   */
+  reviewerFeedback?: {
+    previousScriptMd: string;
+    notes: Array<{ reason: string; notes?: string }>;
+  };
 };
 
 export class ScriptRefusal extends Error {
@@ -259,7 +269,36 @@ ${input.resource
   ? "Include a 1-line on-screen citation (citationLine field) referencing the supplied source."
   : "If you cannot ground a factual claim, return a soft, non-claim-making hook (e.g., 'A reminder, not a remedy:')."}`;
 
-  const prompt = `BRIEF:\n${input.brief}\n${sourceHint}\nReturn JSON matching the schema. Keep all language clear, warm, and judgment-free.`;
+  // Reviewer feedback context. When present, the LLM is explicitly told
+  // this is a REGENERATION and that the previous attempt was rejected.
+  // Each prior note gets surfaced verbatim so the model can address them
+  // one by one rather than guessing what "improve it" might mean. Notes
+  // are presented in chronological order so the model sees the iteration
+  // trajectory.
+  const feedbackBlock = input.reviewerFeedback
+    ? `
+
+⚠ REGENERATION REQUEST — the previous version of this script was rejected by a reviewer. Read each note carefully and address ALL of them. Do not repeat the same mistakes.
+
+PREVIOUS ATTEMPT (the one that was rejected):
+${input.reviewerFeedback.previousScriptMd.slice(0, 2000)}
+
+REVIEWER NOTES (newest last; each must be addressed):
+${input.reviewerFeedback.notes
+  .map((n, i) => {
+    const noteText = n.notes ? n.notes : "(no free-text note — just the reason tag)";
+    return `  ${i + 1}. [${n.reason}] ${noteText}`;
+  })
+  .join("\n")}
+
+When rewriting:
+  - Keep what worked (structure, length envelope, brand voice).
+  - Specifically fix every reviewer concern listed above.
+  - If a note says "rewrite completely", treat earlier creative choices as off-limits and reach for a fresh angle, vocabulary, and pacing.
+  - Never repeat a phrase from the previous attempt that a note specifically called out.`
+    : "";
+
+  const prompt = `BRIEF:\n${input.brief}\n${sourceHint}${feedbackBlock}\nReturn JSON matching the schema. Keep all language clear, warm, and judgment-free.`;
 
   // First attempt.
   let object = (

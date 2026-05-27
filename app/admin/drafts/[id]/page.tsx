@@ -266,6 +266,7 @@ export default async function DraftReview({ params }: { params: { id: string } }
           videoUrl: draft.videoUrl,
           clinicianReviewerId: draft.clinicianReviewerId,
           editorReviewerId: draft.editorReviewerId,
+          reviewerNotes,
         }}
         capabilities={can}
         reviewerRole={reviewerRole}

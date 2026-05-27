@@ -5,12 +5,21 @@ import { useState } from "react";
 import { REQUEST_CHANGES_REASONS, type RequestChangesReason } from "@/lib/social/review-reasons";
 import { PublishProgress } from "./PublishProgress";
 
+export type ReviewerNote = {
+  reason: string;
+  notes?: string;
+  by?: string;
+  role?: string;
+  ts?: string;
+};
+
 type Draft = {
   id: string;
   status: string;
   videoUrl: string | null;
   clinicianReviewerId: string | null;
   editorReviewerId: string | null;
+  reviewerNotes?: ReviewerNote[] | null;
 };
 
 type Capabilities = {
@@ -62,6 +71,8 @@ export function DraftReviewActions({
     }
   }
 
+  const [rewriteMessage, setRewriteMessage] = useState<string | null>(null);
+
   async function requestChanges() {
     setBusy("request-changes");
     setError(null);
@@ -75,6 +86,66 @@ export function DraftReviewActions({
       if (!res.ok) {
         setError(j?.error ?? "Submission failed");
       } else {
+        setNotes("");
+        router.refresh();
+      }
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function rewriteWithNotes(autoRender: boolean) {
+    const trimmedNote = notes.trim();
+    const hasPriorNotes = (draft.reviewerNotes?.length ?? 0) > 0;
+    if (!trimmedNote && !hasPriorNotes) {
+      setError(
+        "Add a note (or have at least one prior note) before asking the LLM to rewrite.",
+      );
+      return;
+    }
+    const confirmMsg = autoRender
+      ? "Rewrite the script using all reviewer notes, then auto-render the new video? Status will reset to script_draft and the existing video URL will be cleared."
+      : "Rewrite the script using all reviewer notes? Status will reset to script_draft and the existing video URL will be cleared.";
+    if (!window.confirm(confirmMsg)) return;
+    setBusy("rewrite");
+    setError(null);
+    setRewriteMessage(null);
+    try {
+      const body: Record<string, unknown> = {
+        role: reviewerRole,
+        autoRender,
+      };
+      if (trimmedNote) {
+        body.reason = reason;
+        body.notes = trimmedNote;
+      }
+      const res = await fetch(`/api/admin/drafts/${draft.id}/rewrite-script`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const j = (await res.json().catch(() => null)) as {
+        ok?: boolean;
+        appliedNoteCount?: number;
+        newWordCount?: number;
+        newChapterCount?: number;
+        renderDispatched?: boolean;
+        renderUrl?: string;
+        renderError?: string;
+        error?: string;
+        reason?: string;
+        detail?: string;
+      } | null;
+      if (!res.ok || !j?.ok) {
+        setError(j?.detail ?? j?.reason ?? j?.error ?? `Rewrite failed (HTTP ${res.status})`);
+      } else {
+        const parts = [
+          `Rewrote with ${j.appliedNoteCount} note${j.appliedNoteCount === 1 ? "" : "s"}`,
+          `${j.newWordCount} words across ${j.newChapterCount} chapter${j.newChapterCount === 1 ? "" : "s"}`,
+        ];
+        if (j.renderDispatched) parts.push("render dispatched — refresh in ~3 min");
+        else if (j.renderError) parts.push(`render skipped: ${j.renderError}`);
+        setRewriteMessage(parts.join(" · "));
         setNotes("");
         router.refresh();
       }
@@ -270,14 +341,66 @@ export function DraftReviewActions({
             <span className="text-xs text-ink-400">{notes.length}/600</span>
           </label>
 
-          <button
-            type="button"
-            onClick={requestChanges}
-            disabled={busy === "request-changes"}
-            className="mt-3 btn-secondary"
-          >
-            {busy === "request-changes" ? "Saving…" : "Append note"}
-          </button>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={requestChanges}
+              disabled={!!busy}
+              className="btn-secondary"
+              title="Save this note for the next reviewer to read. No script change."
+            >
+              {busy === "request-changes" ? "Saving…" : "Append note"}
+            </button>
+            <button
+              type="button"
+              onClick={() => rewriteWithNotes(true)}
+              disabled={!!busy}
+              className="btn-primary"
+              title="Append note + ask the LLM to rewrite the script using ALL accumulated notes, then auto-render the new video."
+            >
+              {busy === "rewrite" ? "Rewriting…" : "Apply notes & rewrite + render"}
+            </button>
+            <button
+              type="button"
+              onClick={() => rewriteWithNotes(false)}
+              disabled={!!busy}
+              className="pill text-xs"
+              title="Rewrite the script but don't auto-render. Useful when you want to review the new script before spending a render."
+            >
+              {busy === "rewrite" ? "Rewriting…" : "Rewrite only (no render)"}
+            </button>
+          </div>
+
+          {rewriteMessage && (
+            <p className="mt-3 text-xs text-accent">{rewriteMessage}</p>
+          )}
+
+          {draft.reviewerNotes && draft.reviewerNotes.length > 0 && (
+            <details className="mt-4 text-xs">
+              <summary className="cursor-pointer text-ink-600 hover:text-ink-900">
+                Prior notes on this draft ({draft.reviewerNotes.length})
+              </summary>
+              <ul className="mt-2 space-y-2">
+                {draft.reviewerNotes.map((n, i) => (
+                  <li
+                    key={i}
+                    className="rounded-lg border border-border bg-bg p-2"
+                  >
+                    <div className="flex items-center justify-between gap-2 text-ink-400">
+                      <span className="font-mono">{n.reason}</span>
+                      <span>
+                        {n.role && <span className="mr-2">{n.role}</span>}
+                        {n.ts && <span>{new Date(n.ts).toLocaleString()}</span>}
+                      </span>
+                    </div>
+                    {n.notes && (
+                      <p className="mt-1 text-ink-700">{n.notes}</p>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
         </div>
       )}
 
