@@ -17,7 +17,7 @@
  * fires `onDone(ok, finalState)` so the parent can refresh the draft.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 type PlatformId = "instagram" | "youtube" | "facebook";
 
@@ -78,6 +78,13 @@ export function PublishProgress({
     }
     return initial;
   });
+  // Client-side "smooth pct" per platform — interpolates between the
+  // pct events the server emits so the bar visibly moves even during
+  // the long pauses (IG warmup is 5s between ticks; IG retry backoff
+  // is 30s; YT upload progress arrives in chunks of variable size).
+  // Each tick the value creeps toward `realPct + 12` capped at 98%,
+  // and snaps to 100 when the platform completes. Never decreases.
+  const [displayPcts, setDisplayPcts] = useState<Record<string, number>>({});
   const [terminal, setTerminal] = useState<DoneSummary | null>(null);
   const [streamError, setStreamError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -141,6 +148,52 @@ export function PublishProgress({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Animation loop for the smooth progress creep. Runs at ~8 fps
+  // (120ms) which is smooth enough for a progress bar and easy on
+  // CPU. Stops automatically once every row has terminated.
+  useEffect(() => {
+    const id = setInterval(() => {
+      setDisplayPcts((prev) => {
+        const next = { ...prev };
+        let changed = false;
+        for (const row of rows.values()) {
+          const cur = next[row.platform] ?? 0;
+          let target: number;
+          if (row.status === "success" || row.status === "skipped") {
+            target = 100;
+          } else if (row.status === "failed") {
+            target = cur; // freeze where we were
+          } else if (row.status === "running") {
+            // Soft ceiling 12 pts ahead of the last real event so the
+            // bar keeps moving between server events, but never runs
+            // away to 100% without confirmation.
+            target = Math.min(98, row.pct + 12);
+          } else {
+            // queued
+            target = 0;
+          }
+          let nextVal = cur;
+          if (cur < row.pct) {
+            // A new event jumped pct ahead of us — catch up fast.
+            nextVal = Math.min(row.pct, cur + 2.5);
+          } else if (cur < target) {
+            // Soft creep toward the soft ceiling.
+            nextVal = Math.min(target, cur + 0.45);
+          } else if (target < cur && (row.status === "success" || row.status === "skipped")) {
+            // Snap up to 100 fast on completion.
+            nextVal = Math.min(100, cur + 6);
+          }
+          if (Math.abs(nextVal - cur) > 0.01) {
+            next[row.platform] = nextVal;
+            changed = true;
+          }
+        }
+        return changed ? next : prev;
+      });
+    }, 120);
+    return () => clearInterval(id);
+  }, [rows]);
 
   function applyEvent(evt: any) {
     if (evt.event === "platform_start") {
@@ -241,7 +294,11 @@ export function PublishProgress({
 
       <ul className="space-y-2">
         {Array.from(rows.values()).map((row) => (
-          <ProgressRow key={row.platform} row={row} />
+          <ProgressRow
+            key={row.platform}
+            row={row}
+            displayPct={displayPcts[row.platform] ?? 0}
+          />
         ))}
       </ul>
 
@@ -257,7 +314,13 @@ export function PublishProgress({
   );
 }
 
-function ProgressRow({ row }: { row: PlatformState }) {
+function ProgressRow({
+  row,
+  displayPct,
+}: {
+  row: PlatformState;
+  displayPct: number;
+}) {
   const meta = PLATFORM_META[row.platform];
   const elapsedMs =
     row.startedAt && row.finishedAt
@@ -266,13 +329,23 @@ function ProgressRow({ row }: { row: PlatformState }) {
         ? Date.now() - row.startedAt
         : undefined;
 
+  // Visual pct = smoothed displayPct. Header label rounds for tidy
+  // display. When the bar terminates we always show 100% (success/
+  // skipped) or the last real pct (failed) so the operator sees the
+  // bar in a stable state rather than mid-animation.
+  const visualPct = useMemo(() => {
+    if (row.status === "success" || row.status === "skipped") return 100;
+    if (row.status === "failed") return row.pct;
+    return Math.max(0, Math.min(100, displayPct));
+  }, [row.status, row.pct, displayPct]);
+
   return (
     <li className="rounded-xl border border-border bg-bg p-3">
       <div className="flex items-center gap-3">
         <StatusPip status={row.status} />
         <span className="font-medium text-sm text-ink-900">{meta.label}</span>
         <span className="ml-auto text-xs text-ink-400 tabular-nums">
-          {row.status === "running" && `${row.pct}%`}
+          {row.status === "running" && `${Math.round(visualPct)}%`}
           {row.status === "success" && elapsedMs && `${(elapsedMs / 1000).toFixed(1)}s`}
           {row.status === "failed" && elapsedMs && `${(elapsedMs / 1000).toFixed(1)}s`}
           {row.status === "skipped" && "skipped"}
@@ -281,10 +354,10 @@ function ProgressRow({ row }: { row: PlatformState }) {
 
       {row.status === "running" && (
         <div className="mt-2">
-          <div className="h-1.5 w-full overflow-hidden rounded-full bg-surface">
+          <div className="h-2 w-full overflow-hidden rounded-full bg-ink-100">
             <div
-              className="h-full bg-ink-700 transition-all duration-300 ease-out"
-              style={{ width: `${row.pct}%` }}
+              className="h-full rounded-full bg-accent transition-[width] duration-150 ease-out"
+              style={{ width: `${visualPct}%` }}
             />
           </div>
           {row.note && (
