@@ -140,12 +140,22 @@ async function handle(req: Request): Promise<NextResponse> {
     });
   }
 
+  // Long-form essays target 2 minutes (~240 words at our 120 wpm narrator
+  // pace — Jenny @ -10% rate). Tightened down from 240s on 2026-05-27
+  // after the first batch of 4-minute essays came back as 5-8 word
+  // chapter headlines: the LLM was treating chapters as bullet points
+  // instead of essay paragraphs and shipping 30s renders for a "4-minute"
+  // brief. The new STYLE_GUIDANCE + word-count guard in
+  // script-generator.ts enforces the target — if the LLM still
+  // underwrites, generateScript throws ScriptRefusal("script_too_short")
+  // and this brief is marked refused for today.
+  const longFormSeconds = Number(process.env.DAILY_GENERATE_LONG_FORM_SECONDS ?? 120);
   for (const brief of picks.longForm) {
     await generateOne({
       brief,
       language: "en",
       style: "long_form_essay",
-      durationSeconds: 240,
+      durationSeconds: longFormSeconds,
       kind: "long_form",
       summary,
     });

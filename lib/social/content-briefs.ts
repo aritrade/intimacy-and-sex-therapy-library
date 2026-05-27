@@ -127,14 +127,14 @@ export const CONTENT_BRIEFS: ContentBrief[] = [
   {
     id: "what-is-sex-therapy",
     brief:
-      "A 4-minute long-form essay explaining what sex therapy actually involves. Address the 'no nudity, no touching, just talking' fear. List what to ask in the first session.",
+      "A 2-minute detailed explainer answering 'what actually happens in sex therapy'. Walk the listener through what a first session looks like minute-by-minute, address the 'no nudity, no touching, just talking' fear with specifics, and list four questions to ask a prospective therapist. Use real, grounded language — never vague generalities.",
     topicSlug: "what-is-sex-therapy",
     preferredStyles: ["long_form_essay"],
   },
   {
     id: "desire-discrepancy-essay",
     brief:
-      "A 5-minute long-form essay on desire discrepancy in couples. Distinguish 'low desire' from 'lower desire than partner'. Practical reframes; no fixes.",
+      "A 2-minute detailed explainer on desire discrepancy in long-term couples. Distinguish 'low desire' from 'lower desire than your partner', explain why the gap usually has nothing to do with attraction, walk through one practical reframe the couple can try this week, and close with what to do when the gap persists. No fixes promised — just reframes.",
     topicSlug: "low-desire",
     preferredStyles: ["long_form_essay"],
     citationTopic: "low-desire",
@@ -142,8 +142,47 @@ export const CONTENT_BRIEFS: ContentBrief[] = [
   {
     id: "shame-cycle-essay",
     brief:
-      "A 4-minute long-form essay on the shame–withdraw cycle in long-term relationships. Cite Brené Brown's distinction between guilt and shame. End with one question for the listener.",
+      "A 2-minute detailed explainer on the shame-withdraw cycle in long-term relationships. Open with what shame feels like in the body during conflict, draw Brené Brown's distinction between guilt and shame, describe the four-step loop (trigger → shame → withdraw → distance), and offer one concrete repair move. End with a single question the listener can ask their partner tonight.",
     topicSlug: "shame-and-guilt",
+    preferredStyles: ["long_form_essay"],
+  },
+  {
+    id: "responsive-desire-deep-dive",
+    brief:
+      "A 2-minute detailed explainer on responsive desire — desire that shows up AFTER touch begins, not before. Explain the difference from spontaneous desire, why the responsive pattern is normal and especially common in long-term partnerships, what 'context' means (stress, fatigue, resentment, safety), and one small ritual a couple can use to invite responsive desire without pressure.",
+    topicSlug: "low-desire",
+    preferredStyles: ["long_form_essay"],
+    citationTopic: "low-desire",
+  },
+  {
+    id: "emotional-intimacy-rebuild",
+    brief:
+      "A 2-minute detailed explainer on rebuilding emotional intimacy after a season of distance. Define emotional intimacy in concrete behaviours (not abstract feelings), explain why distance accumulates without anyone meaning it to, walk through the 'turning toward' research from John Gottman, and give the listener two micro-practices they can start tonight without a long conversation.",
+    topicSlug: "couples-counselling",
+    preferredStyles: ["long_form_essay"],
+    citationTopic: "couples-counselling",
+  },
+  {
+    id: "arousal-non-concordance-explainer",
+    brief:
+      "A 2-minute detailed explainer on arousal non-concordance — the often surprising disconnect between physical arousal and felt desire. Cover the science clearly (Emily Nagoski's work), explain why this matters for consent and for self-trust, address why women's bodies and minds particularly often signal differently, and reassure the listener that this is normal physiology, not dysfunction.",
+    topicSlug: "low-desire",
+    preferredStyles: ["long_form_essay"],
+    citationTopic: "low-desire",
+  },
+  {
+    id: "pain-during-sex-explainer",
+    brief:
+      "A 2-minute detailed explainer on pain during sex (dyspareunia) for anyone who has been told 'it's all in your head' or to 'just relax'. Validate that pain is real and has dozens of physiological causes, walk through the kinds of clinicians to see in what order (gynaecologist, pelvic-floor physio, sex therapist), and give the listener language to advocate for themselves at appointments. Never minimise. Never prescribe.",
+    topicSlug: "vaginismus",
+    preferredStyles: ["long_form_essay"],
+    citationTopic: "vaginismus",
+  },
+  {
+    id: "sleeping-apart-myth-explainer",
+    brief:
+      "A 2-minute detailed explainer on the myth that 'happy couples always share a bed'. Walk through why sleep divorce is a calm, research-grounded practice (not a sign of trouble), what couples actually report after trying it, the difference between physical and emotional intimacy, and how partners can still protect closeness rituals — morning coffee, weekend mornings, shared bedtimes that aren't shared sleep.",
+    topicSlug: "couples-counselling",
     preferredStyles: ["long_form_essay"],
   },
 ];
