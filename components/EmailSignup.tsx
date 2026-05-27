@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { quickEmailCheck } from "@/lib/validation/email-client";
 
 /**
  * Cookieless email-list signup powered by Buttondown.
@@ -37,9 +38,17 @@ export function EmailSignup({
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setBusy(true);
     setError(null);
     setDone(null);
+    // Quick client-side check — catches abc@abc.com / test@test.com
+    // without a round-trip. The server runs a fuller check (disposable
+    // domain blocklist + DNS MX lookup) and is the final authority.
+    const local = quickEmailCheck(email);
+    if (!local.ok) {
+      setError(local.hint);
+      return;
+    }
+    setBusy(true);
     try {
       const res = await fetch("/api/email/subscribe", {
         method: "POST",
@@ -50,11 +59,14 @@ export function EmailSignup({
         ok?: boolean;
         alreadyExisted?: boolean;
         error?: string;
+        detail?: string;
       };
       if (res.status === 503) {
         setError("Email signup isn't configured right now. Try again later.");
+      } else if (res.status === 422) {
+        setError(data.detail ?? "Please enter a valid email address.");
       } else if (!res.ok) {
-        setError(data.error ?? "Couldn't subscribe. Try again.");
+        setError(data.detail ?? data.error ?? "Couldn't subscribe. Try again.");
       } else {
         setDone(
           data.alreadyExisted

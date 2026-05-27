@@ -18,6 +18,7 @@
  */
 
 import { useState } from "react";
+import { quickEmailCheck } from "@/lib/validation/email-client";
 
 type Category = "improvement" | "praise" | "bug" | "other";
 
@@ -45,9 +46,14 @@ export function FeedbackForm({
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setBusy(true);
     setError(null);
     setDone(null);
+    const local = quickEmailCheck(email);
+    if (!local.ok) {
+      setError(local.hint);
+      return;
+    }
+    setBusy(true);
     try {
       const locale =
         typeof document !== "undefined"
@@ -76,6 +82,8 @@ export function FeedbackForm({
         setError("Feedback isn't configured right now. Try again later.");
       } else if (res.status === 429) {
         setError(data.detail ?? "You just sent us a note. Give it a few minutes before sending another.");
+      } else if (res.status === 422) {
+        setError(data.detail ?? "Please enter a valid email address.");
       } else if (!res.ok || !data.ok) {
         setError(data.detail ?? data.error ?? "Couldn't send. Try again.");
       } else {

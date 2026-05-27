@@ -16,6 +16,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createHash } from "node:crypto";
 import { recordAudit } from "@/lib/observability/audit";
+import { validateEmailDeep } from "@/lib/validation/email";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -38,6 +39,15 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, honeypotted: true });
   }
 
+  const emailCheck = await validateEmailDeep(email);
+  if (!emailCheck.ok) {
+    return NextResponse.json(
+      { error: "invalid_email", reason: emailCheck.reason, detail: emailCheck.hint },
+      { status: 422 },
+    );
+  }
+  const cleanEmail = emailCheck.normalized;
+
   const key = process.env.BUTTONDOWN_API_KEY;
   if (!key) {
     return NextResponse.json(
@@ -56,7 +66,7 @@ export async function POST(req: Request) {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      email_address: email,
+      email_address: cleanEmail,
       tags,
     }),
   });
@@ -71,7 +81,7 @@ export async function POST(req: Request) {
     );
   }
 
-  const fingerprint = createHash("sha256").update(email.toLowerCase()).digest("hex").slice(0, 16);
+  const fingerprint = createHash("sha256").update(cleanEmail).digest("hex").slice(0, 16);
   void recordAudit({
     actor: "public:subscribe",
     action: "email_subscribe",
