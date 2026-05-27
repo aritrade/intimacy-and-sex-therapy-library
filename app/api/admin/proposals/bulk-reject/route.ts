@@ -17,7 +17,7 @@
 
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { and, eq, lte, sql } from "drizzle-orm";
+import { and, eq, inArray, lte, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { resourceProposals } from "@/lib/db/schema";
 import { requireRole } from "@/lib/auth/roles";
@@ -37,13 +37,14 @@ const KindSchema = z.enum([
 
 const Body = z
   .object({
+    ids: z.array(z.string().uuid()).min(1).max(500).optional(),
     kind: KindSchema.optional(),
     proposedBy: z.string().max(80).optional(),
     reason: z.string().max(300).optional(),
     minAgeDays: z.number().int().min(0).max(3650).optional(),
   })
-  .refine((b) => !!(b.kind || b.proposedBy || b.minAgeDays), {
-    message: "Provide at least one of: kind, proposedBy, minAgeDays.",
+  .refine((b) => !!(b.ids || b.kind || b.proposedBy || b.minAgeDays), {
+    message: "Provide ids or at least one of: kind, proposedBy, minAgeDays.",
   });
 
 export async function POST(req: Request) {
@@ -61,9 +62,10 @@ export async function POST(req: Request) {
       { status: 400 },
     );
   }
-  const { kind, proposedBy, reason, minAgeDays } = parsed.data;
+  const { ids, kind, proposedBy, reason, minAgeDays } = parsed.data;
 
   const filters = [eq(resourceProposals.status, "open")];
+  if (ids && ids.length > 0) filters.push(inArray(resourceProposals.id, ids));
   if (kind) filters.push(eq(resourceProposals.kind, kind));
   if (proposedBy) filters.push(eq(resourceProposals.proposedBy, proposedBy));
   if (typeof minAgeDays === "number") {

@@ -18,8 +18,7 @@ import { desc, eq, and } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { resourceProposals, resources } from "@/lib/db/schema";
 import { requireAdminPage } from "@/lib/auth/admin-page-guard";
-import { ProposalCard } from "@/components/admin/ProposalCard";
-import { BulkRejectButton } from "@/components/admin/BulkRejectButton";
+import { ProposalsList } from "@/components/admin/ProposalsList";
 import { RunAgentButton } from "@/components/admin/RunAgentButton";
 
 export const metadata = { title: "Proposals · Admin" };
@@ -135,52 +134,30 @@ export default async function ProposalsPage({
         </span>
       </nav>
 
-      {filterStatus === "open" && rows.length > 0 && (
-        <div className="mb-4 card p-3 text-xs text-ink-600 flex flex-wrap items-center gap-3">
-          <span>
-            Bulk action — applies to the {rows.length} open proposal(s)
-            {filterKind ? <> of kind <code>{filterKind}</code></> : null}:
-          </span>
-          <BulkRejectButton
-            filter={{ kind: filterKind ?? null }}
-            visibleCount={rows.length}
-          />
-          <span className="text-ink-400">
-            Tip: <em>Mark evergreen</em> on a specific refresh proposal is usually a
-            better fix than bulk-rejecting — it prevents the same item being
-            re-flagged tomorrow.
-          </span>
-        </div>
-      )}
-
       {rows.length === 0 ? (
         <div className="card p-8 text-sm text-ink-500">
           No {filterStatus} proposals{filterKind ? ` of kind ${filterKind}` : ""}. The agents
           run at 03:00 IST daily; check back tomorrow.
         </div>
       ) : (
-        <ul className="space-y-3">
-          {rows.map((r) => (
-            <li key={r.proposal.id}>
-              <ProposalCard
-                proposal={{
-                  id: r.proposal.id,
-                  kind: r.proposal.kind,
-                  proposedBy: r.proposal.proposedBy,
-                  resourceId: r.proposal.resourceId,
-                  resourceTitle: r.resource?.title ?? null,
-                  resourceUrl: r.resource?.externalUrl ?? null,
-                  payload: r.proposal.payload,
-                  summary: r.proposal.summary,
-                  evidence: r.proposal.evidence ?? {},
-                  confidence: r.proposal.confidence,
-                  status: r.proposal.status,
-                  createdAt: r.proposal.createdAt.toISOString(),
-                }}
-              />
-            </li>
-          ))}
-        </ul>
+        <ProposalsList
+          isOpenView={filterStatus === "open"}
+          filterKind={filterKind}
+          rows={rows.map((r) => ({
+            id: r.proposal.id,
+            kind: r.proposal.kind,
+            proposedBy: r.proposal.proposedBy,
+            resourceId: r.proposal.resourceId,
+            resourceTitle: r.resource?.title ?? null,
+            resourceUrl: r.resource?.externalUrl ?? null,
+            payload: r.proposal.payload as Record<string, unknown>,
+            summary: r.proposal.summary,
+            evidence: (r.proposal.evidence ?? {}) as Record<string, unknown>,
+            confidence: r.proposal.confidence,
+            status: r.proposal.status,
+            createdAt: r.proposal.createdAt.toISOString(),
+          }))}
+        />
       )}
     </div>
   );
