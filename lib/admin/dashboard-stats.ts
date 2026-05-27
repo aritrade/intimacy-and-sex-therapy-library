@@ -27,6 +27,17 @@ function isoDate(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
 
+/**
+ * postgres-js's `Buffer.byteLength` path crashes when a JS `Date` is
+ * passed as a template-string parameter (it tries to byteLength a
+ * Date instance). Workaround: feed a full ISO timestamp string and
+ * let Postgres coerce it on the server. This is consistent across
+ * every query in this file.
+ */
+function tsParam(d: Date): string {
+  return d.toISOString();
+}
+
 function emptyDayBuckets(days: number): Map<string, ChartPoint> {
   const out = new Map<string, ChartPoint>();
   const now = new Date();
@@ -88,7 +99,7 @@ export async function engagementSnapshot(windowDays = 30): Promise<EngagementSna
       join (
         select draft_id, platform, max(pulled_at) as t
           from post_metrics
-         where pulled_at >= ${since}
+         where pulled_at >= ${tsParam(since)}
          group by draft_id, platform
       ) latest
         on latest.draft_id = pm.draft_id
@@ -145,7 +156,7 @@ export async function engagementSnapshot(windowDays = 30): Promise<EngagementSna
       platform,
       sum(views)::int as views
     from post_metrics
-    where pulled_at >= ${since}
+    where pulled_at >= ${tsParam(since)}
     group by day, platform
     order by day
   `)) as unknown as Array<{ day: string; platform: string; views: number }>;
@@ -170,9 +181,9 @@ export async function engagementSnapshot(windowDays = 30): Promise<EngagementSna
     from content_drafts d
     left join post_metrics pm
       on pm.draft_id = d.id
-     and pm.pulled_at >= ${since}
+     and pm.pulled_at >= ${tsParam(since)}
     where d.status in ('posted', 'taken_down')
-      and d.posted_at >= ${since}
+      and d.posted_at >= ${tsParam(since)}
     group by d.id
     order by total_views desc
     limit 8
@@ -269,7 +280,7 @@ export async function channelSnapshotView(windowDays = 90): Promise<ChannelSnaps
       platform,
       max(followers)::int as followers
     from channel_metrics
-    where pulled_at >= ${since}
+    where pulled_at >= ${tsParam(since)}
     group by day, platform
     order by day
   `)) as unknown as Array<{ day: string; platform: string; followers: number }>;
@@ -337,13 +348,13 @@ export async function feedbackView(
   const [totals] = (await db.execute(sql`
     select
       (select count(*) from user_feedback) as total_all,
-      (select count(*) from user_feedback where created_at >= ${since}) as total_window
+      (select count(*) from user_feedback where created_at >= ${tsParam(since)}) as total_window
   `)) as unknown as Array<{ total_all: number; total_window: number }>;
 
   const byCategory = (await db.execute(sql`
     select category, count(*)::int as n
       from user_feedback
-     where created_at >= ${since}
+     where created_at >= ${tsParam(since)}
      group by category
      order by n desc
   `)) as unknown as Array<{ category: string; n: number }>;
@@ -351,7 +362,7 @@ export async function feedbackView(
   const perDayRows = (await db.execute(sql`
     select to_char(created_at, 'YYYY-MM-DD') as day, count(*)::int as n
       from user_feedback
-     where created_at >= ${since}
+     where created_at >= ${tsParam(since)}
      group by day
      order by day
   `)) as unknown as Array<{ day: string; n: number }>;
@@ -432,7 +443,7 @@ export async function subscriberView(windowDays = 90): Promise<SubscriberView> {
       select to_char(ts, 'YYYY-MM-DD') as day, count(*)::int as n
         from audit_log
        where action = 'email_subscribe'
-         and ts >= ${since}
+         and ts >= ${tsParam(since)}
        group by day
        order by day
     `)) as unknown as Array<{ day: string; n: number }>;

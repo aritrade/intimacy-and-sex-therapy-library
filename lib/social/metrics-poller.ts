@@ -63,7 +63,10 @@ export async function pollAllPostMetrics(opts?: {
   }
 
   // Pull "posted" drafts from the last N days that have at least one platform id.
-  const since = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000);
+  // We pass `since` as an ISO timestamp string rather than a Date instance —
+  // postgres-js's template-literal driver crashes when it tries to byteLength
+  // a JS Date object. Postgres coerces the ISO string into a timestamp.
+  const since = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000).toISOString();
   const drafts = (await db.execute(sql`
     select id, status, posted_at, platform_post_ids, takedown_events
       from content_drafts
