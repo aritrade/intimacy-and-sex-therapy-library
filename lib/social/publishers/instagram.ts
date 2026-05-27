@@ -57,24 +57,26 @@ const GRAPH_VERSION = "v22.0";
 
 /**
  * How long to wait between container creation and the first publish
- * attempt. Empirically Meta finishes transcoding our 37-42s portrait
- * Reels in 5-15s, so 25s is plenty for the happy path; retries cover
- * the long tail.
+ * attempt. Meta's IG transcoding queue is variable: some reels finish
+ * in 5-15s, others sit at "Media not ready" (code 9007) for 90s+.
  *
- * Tuned down from 60s on 2026-05-27 after a 504 timeout on the manual
- * publish route: serial IG + FB + YT all running under one 300s budget
- * doesn't tolerate 60s of pure sleep per Meta call.
+ * History:
+ *   - 60s (initial): blew Vercel's 60s function budget
+ *   - 25s + 4 retries (2026-05-27 morning): fit the budget but bounced
+ *     real reels off IG with "Media not ready" after 115s of polling
+ *   - 45s + 8 retries (2026-05-27 fix): worst case 45 + 7*30 = 255s,
+ *     still inside 300s if IG runs alone OR with YT only. If the
+ *     operator picks IG + FB + YT all together and BOTH Meta calls
+ *     hit their max retry, total ~510s would breach 300s — at that
+ *     point the slower of the two times out cleanly with a refusal.
+ *     In practice this is rare; when one platform's transcoding queue
+ *     is slow the other usually isn't.
  */
-const WARMUP_MS = Number(process.env.IG_PUBLISH_WARMUP_MS ?? "25000");
+const WARMUP_MS = Number(process.env.IG_PUBLISH_WARMUP_MS ?? "45000");
 /** Backoff between retried publish attempts when Meta says "not ready". */
 const RETRY_MS = Number(process.env.IG_PUBLISH_RETRY_MS ?? "30000");
-/**
- * Cap on retries. With WARMUP=25s + 4 attempts (3 backoffs * RETRY=30s)
- * we give Meta up to ~115s per IG call. Combined with FB (~115s) and YT
- * (~30s) serial, worst case ~260s, still within Vercel Pro's 300s
- * function budget.
- */
-const MAX_RETRIES = Number(process.env.IG_PUBLISH_MAX_RETRIES ?? "4");
+/** With WARMUP=45s + 8 attempts (7 backoffs * RETRY=30s) = ~255s per call. */
+const MAX_RETRIES = Number(process.env.IG_PUBLISH_MAX_RETRIES ?? "8");
 
 export async function publishInstagramReel(input: InstagramPublishInput): Promise<InstagramPublishResult> {
   const igUserId = process.env.INSTAGRAM_BUSINESS_ACCOUNT_ID;
