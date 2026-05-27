@@ -68,12 +68,16 @@ export type FacebookPublishResult = {
 
 const GRAPH_VERSION = "v22.0";
 
-/** Time to wait between upload-start success and the finish call. */
-const WARMUP_MS = Number(process.env.FB_PUBLISH_WARMUP_MS ?? "60000");
+/**
+ * Time to wait between upload-start success and the finish call. Mirrors
+ * the IG envelope after the 2026-05-27 retune (60s blanket wait was
+ * blowing past Vercel's 300s budget when IG + FB + YT all ran serial).
+ */
+const WARMUP_MS = Number(process.env.FB_PUBLISH_WARMUP_MS ?? "25000");
 /** Backoff between retried finish attempts when Meta says "in progress". */
 const RETRY_MS = Number(process.env.FB_PUBLISH_RETRY_MS ?? "30000");
-/** With WARMUP=60s + 6 retries * 30s = ~4 min total. Same envelope as IG. */
-const MAX_RETRIES = Number(process.env.FB_PUBLISH_MAX_RETRIES ?? "6");
+/** With WARMUP=25s + 4 attempts * 30s = ~115s per call. Same envelope as IG. */
+const MAX_RETRIES = Number(process.env.FB_PUBLISH_MAX_RETRIES ?? "4");
 
 export function isFacebookConfigured(): boolean {
   return Boolean(

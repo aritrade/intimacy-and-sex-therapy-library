@@ -10,6 +10,12 @@ import { requireApiAdmin } from "@/lib/auth/api-admin-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// Publishing fans out to IG + YT + FB. Each Meta publisher does a blind-publish
+// warmup (~25s) plus retry budget, and YT downloads from Blob then uploads.
+// Serialized, the worst-case budget is ~3 minutes — well under Pro's 300s cap.
+// Keep this in sync with vercel.json (Vercel reads the JSON; Next reads this
+// export — both must agree on the higher value).
+export const maxDuration = 300;
 
 const Body = z.object({
   platforms: z

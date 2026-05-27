@@ -7,7 +7,7 @@
     "app/api/companion/chat/route.ts": { "maxDuration": 60 },
     "app/api/chat/route.ts": { "maxDuration": 60 },
     "app/api/admin/drafts/route.ts": { "maxDuration": 60 },
-    "app/api/admin/drafts/[id]/publish/route.ts": { "maxDuration": 60 },
+    "app/api/admin/drafts/[id]/publish/route.ts": { "maxDuration": 300 },
     "app/api/admin/post-metrics/poll/route.ts": { "maxDuration": 60 },
     "app/api/cron/post-metrics-poll/route.ts": { "maxDuration": 60 },
     "app/api/cron/daily-generate/route.ts": { "maxDuration": 300 },

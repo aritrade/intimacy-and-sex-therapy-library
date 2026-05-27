@@ -32,9 +32,14 @@ export function DraftReviewActions({
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [confirm, setConfirm] = useState(false);
-  const [platforms, setPlatforms] = useState<{ instagram: boolean; youtube: boolean }>({
+  const [platforms, setPlatforms] = useState<{
+    instagram: boolean;
+    youtube: boolean;
+    facebook: boolean;
+  }>({
     instagram: false,
     youtube: false,
+    facebook: false,
   });
   const [reason, setReason] = useState<RequestChangesReason>("factual_inaccuracy");
   const [notes, setNotes] = useState("");
@@ -82,9 +87,9 @@ export function DraftReviewActions({
       setError("Tick the attestation checkbox before publishing.");
       return;
     }
-    const sel = (Object.keys(platforms) as Array<"instagram" | "youtube">).filter(
-      (k) => platforms[k],
-    );
+    const sel = (
+      Object.keys(platforms) as Array<"instagram" | "youtube" | "facebook">
+    ).filter((k) => platforms[k]);
     if (sel.length === 0) {
       setError("Select at least one platform.");
       return;
@@ -242,7 +247,7 @@ export function DraftReviewActions({
             />
             Instagram Reels
           </label>
-          <label className="inline-flex items-center gap-2 text-sm">
+          <label className="inline-flex items-center gap-2 mr-4 text-sm">
             <input
               type="checkbox"
               checked={platforms.youtube}
@@ -250,6 +255,15 @@ export function DraftReviewActions({
               onChange={(e) => setPlatforms((p) => ({ ...p, youtube: e.target.checked }))}
             />
             YouTube Shorts
+          </label>
+          <label className="inline-flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={platforms.facebook}
+              disabled={!capabilities.publish}
+              onChange={(e) => setPlatforms((p) => ({ ...p, facebook: e.target.checked }))}
+            />
+            Facebook Reels
           </label>
         </fieldset>
 

@@ -57,18 +57,24 @@ const GRAPH_VERSION = "v22.0";
 
 /**
  * How long to wait between container creation and the first publish
- * attempt. Empirically, 60s is enough for Meta to transcode our 37-42s
- * Reels every time so far. Overridable for longer/heavier source files.
+ * attempt. Empirically Meta finishes transcoding our 37-42s portrait
+ * Reels in 5-15s, so 25s is plenty for the happy path; retries cover
+ * the long tail.
+ *
+ * Tuned down from 60s on 2026-05-27 after a 504 timeout on the manual
+ * publish route: serial IG + FB + YT all running under one 300s budget
+ * doesn't tolerate 60s of pure sleep per Meta call.
  */
-const WARMUP_MS = Number(process.env.IG_PUBLISH_WARMUP_MS ?? "60000");
+const WARMUP_MS = Number(process.env.IG_PUBLISH_WARMUP_MS ?? "25000");
 /** Backoff between retried publish attempts when Meta says "not ready". */
 const RETRY_MS = Number(process.env.IG_PUBLISH_RETRY_MS ?? "30000");
 /**
- * Cap on retries. With WARMUP=60s + 6 attempts * RETRY=30s we give Meta
- * up to ~4 minutes total before giving up. Fits well within a Vercel
- * Pro 300s function budget; bump only if a longer reel justifies it.
+ * Cap on retries. With WARMUP=25s + 4 attempts (3 backoffs * RETRY=30s)
+ * we give Meta up to ~115s per IG call. Combined with FB (~115s) and YT
+ * (~30s) serial, worst case ~260s, still within Vercel Pro's 300s
+ * function budget.
  */
-const MAX_RETRIES = Number(process.env.IG_PUBLISH_MAX_RETRIES ?? "6");
+const MAX_RETRIES = Number(process.env.IG_PUBLISH_MAX_RETRIES ?? "4");
 
 export async function publishInstagramReel(input: InstagramPublishInput): Promise<InstagramPublishResult> {
   const igUserId = process.env.INSTAGRAM_BUSINESS_ACCOUNT_ID;
