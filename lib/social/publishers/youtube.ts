@@ -20,6 +20,7 @@
 
 import { readFile } from "node:fs/promises";
 import { getYouTubeAccessToken, YouTubeOAuthRefusal } from "./youtube-oauth";
+import type { ProgressCallback } from "../publish-progress";
 
 export class YouTubePublisherRefusal extends Error {
   constructor(
@@ -50,6 +51,8 @@ export type YouTubeUploadInput = {
   tags?: string[];
   categoryId?: string; // 22 = People & Blogs, 27 = Education
   privacyStatus?: "public" | "unlisted" | "private";
+  /** Optional progress callback for the streaming publish UI. */
+  onProgress?: ProgressCallback;
 };
 
 export type YouTubeUploadResult = {
@@ -58,6 +61,8 @@ export type YouTubeUploadResult = {
 };
 
 export async function uploadYouTubeShort(input: YouTubeUploadInput): Promise<YouTubeUploadResult> {
+  const onProgress = input.onProgress ?? (() => {});
+  onProgress("container_create", { pct: 5, note: "Exchanging refresh token" });
   let token: string;
   try {
     token = await getYouTubeAccessToken();
@@ -73,6 +78,7 @@ export async function uploadYouTubeShort(input: YouTubeUploadInput): Promise<You
   // Source priority: HTTPS URL (works everywhere) → local path (CLI only).
   let file: Buffer | null = null;
   if (input.videoUrl && input.videoUrl.startsWith("https://")) {
+    onProgress("uploading", { pct: 15, note: "Downloading video from Blob" });
     try {
       const res = await fetch(input.videoUrl);
       if (!res.ok) {
@@ -82,6 +88,7 @@ export async function uploadYouTubeShort(input: YouTubeUploadInput): Promise<You
         );
       }
       file = Buffer.from(await res.arrayBuffer());
+      onProgress("uploading", { pct: 40, note: `Downloaded ${Math.round(file.length / 1024)} KB` });
     } catch (e) {
       if (e instanceof YouTubePublisherRefusal) throw e;
       throw new YouTubePublisherRefusal("fetch_failed", String((e as Error).message));
@@ -139,6 +146,7 @@ export async function uploadYouTubeShort(input: YouTubeUploadInput): Promise<You
   const tail = Buffer.from(`\r\n--${boundary}--\r\n`, "utf-8");
   const body = Buffer.concat([head, file, tail]);
 
+  onProgress("uploading", { pct: 65, note: `Uploading ${Math.round(body.length / 1024)} KB to YouTube` });
   const res = await fetch(
     "https://www.googleapis.com/upload/youtube/v3/videos?part=snippet,status&uploadType=multipart",
     {
@@ -155,5 +163,6 @@ export async function uploadYouTubeShort(input: YouTubeUploadInput): Promise<You
   if (!res.ok || !j.id) {
     throw new YouTubePublisherRefusal("upload_failed", JSON.stringify(j));
   }
+  onProgress("finalising", { pct: 100, note: "Published" });
   return { videoId: j.id, url: `https://www.youtube.com/shorts/${j.id}` };
 }

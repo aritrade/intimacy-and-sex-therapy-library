@@ -56,9 +56,13 @@ export class FacebookPublisherRefusal extends Error {
   }
 }
 
+import type { ProgressCallback } from "../publish-progress";
+
 export type FacebookPublishInput = {
   videoUrl: string;
   description: string;
+  /** Optional progress callback for the streaming publish UI. */
+  onProgress?: ProgressCallback;
 };
 
 export type FacebookPublishResult = {
@@ -88,6 +92,7 @@ export function isFacebookConfigured(): boolean {
 export async function publishFacebookReel(
   input: FacebookPublishInput,
 ): Promise<FacebookPublishResult> {
+  const onProgress = input.onProgress ?? (() => {});
   const pageId = process.env.META_FACEBOOK_PAGE_ID;
   const accessToken = process.env.META_GRAPH_ACCESS_TOKEN;
   if (!pageId || !accessToken) {
@@ -104,6 +109,7 @@ export async function publishFacebookReel(
   }
 
   // 1) Start the upload session.
+  onProgress("container_create", { pct: 5, note: "Opening upload session with Meta" });
   const startUrl = `https://graph.facebook.com/${GRAPH_VERSION}/${pageId}/video_reels?upload_phase=start&access_token=${encodeURIComponent(accessToken)}`;
   const startRes = await fetch(startUrl, { method: "POST" });
   const startJson = (await startRes.json()) as {
@@ -121,6 +127,7 @@ export async function publishFacebookReel(
   const uploadUrl = startJson.upload_url;
 
   // 2) Hand Meta the URL — they fetch it from Blob themselves.
+  onProgress("uploading", { pct: 15, note: "Handing Meta the Blob URL" });
   const uploadRes = await fetch(uploadUrl, {
     method: "POST",
     headers: {
@@ -140,7 +147,18 @@ export async function publishFacebookReel(
   }
 
   // 3) Wait for transcoding, then blind-publish with retry-on-transient.
+  onProgress("warmup", { pct: 25, note: `Meta is transcoding (warmup ${Math.round(WARMUP_MS / 1000)}s)` });
+  const warmupStart = Date.now();
+  const warmupTicker = setInterval(() => {
+    const elapsed = Date.now() - warmupStart;
+    const ratio = Math.min(1, elapsed / WARMUP_MS);
+    onProgress("warmup", {
+      pct: 25 + Math.round(ratio * 20),
+      note: `Transcoding... ${Math.round(elapsed / 1000)}s / ${Math.round(WARMUP_MS / 1000)}s`,
+    });
+  }, 5000);
   await sleep(WARMUP_MS);
+  clearInterval(warmupTicker);
 
   // Description has a 2200 char limit on FB Reels. Long descriptions
   // are silently truncated by the API which makes debugging confusing;
@@ -149,6 +167,13 @@ export async function publishFacebookReel(
 
   let lastError = "no attempts made";
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    const attemptPct = 45 + Math.round((attempt / MAX_RETRIES) * 50);
+    onProgress("publish_attempt", {
+      pct: attemptPct,
+      attempt,
+      maxAttempts: MAX_RETRIES,
+      note: `Asking Meta to finalise (attempt ${attempt}/${MAX_RETRIES})`,
+    });
     const finishUrl =
       `https://graph.facebook.com/${GRAPH_VERSION}/${pageId}/video_reels` +
       `?upload_phase=finish&video_id=${encodeURIComponent(videoId)}` +
@@ -165,6 +190,7 @@ export async function publishFacebookReel(
       // Meta returns post_id when the publish has actually attached to
       // the wall. If absent (rare), fall back to the video_id, which
       // is enough to look the post up via /<id>?fields=permalink_url.
+      onProgress("finalising", { pct: 100, note: "Published" });
       return { postId: finishJson.post_id ?? videoId };
     }
 
@@ -184,6 +210,12 @@ export async function publishFacebookReel(
       );
     }
     if (attempt < MAX_RETRIES) {
+      onProgress("transcoding_wait", {
+        pct: attemptPct,
+        attempt,
+        maxAttempts: MAX_RETRIES,
+        note: `Meta says "in progress" — waiting ${Math.round(RETRY_MS / 1000)}s before retry`,
+      });
       await sleep(RETRY_MS);
     }
   }

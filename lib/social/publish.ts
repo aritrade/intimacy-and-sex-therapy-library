@@ -35,6 +35,7 @@ import {
   isTwitterConfigured,
 } from "@/lib/social/publishers/twitter";
 import { BRAND_COPY } from "@/lib/brand/tokens";
+import type { ProgressEvent } from "./publish-progress";
 
 export type PublishResult = {
   ok: boolean;
@@ -59,9 +60,18 @@ export type Platform =
 export type PublishInput = {
   draftId: string;
   platforms: Platform[];
+  /**
+   * Optional event sink. Called as the publish flow transitions between
+   * platforms and stages. Set by the streaming publish endpoint to
+   * forward events to the client over NDJSON; non-streaming callers
+   * (existing cron + JSON API) pass nothing and the events are dropped.
+   */
+  onEvent?: (event: ProgressEvent) => void;
 };
 
 export async function publishDraft(input: PublishInput): Promise<PublishResult> {
+  const onEvent = input.onEvent ?? (() => {});
+  const runStart = Date.now();
   const draft = await db.query.contentDrafts.findFirst({
     where: eq(contentDrafts.id, input.draftId),
   });
@@ -100,26 +110,49 @@ export async function publishDraft(input: PublishInput): Promise<PublishResult> 
   const skipped: string[] = [];
   const failures: Array<{ platform: string; reason: string; detail?: string }> = [];
 
-  if (input.platforms.includes("instagram") && existing.instagram) {
-    skipped.push("instagram");
-  } else if (input.platforms.includes("instagram")) {
+  onEvent({ event: "start", platforms: input.platforms, draftId: input.draftId });
+
+  // Emit `start` for each primary so the UI can draw a placeholder row
+  // even before that platform begins (gives the user the full picture
+  // up front rather than rows appearing one at a time).
+  for (const p of ["instagram", "youtube", "facebook"] as const) {
+    if (input.platforms.includes(p)) {
+      if (existing[p]) {
+        onEvent({
+          event: "platform_skipped",
+          platform: p,
+          reason: "already_posted",
+          existingId: existing[p],
+        });
+        skipped.push(p);
+      } else {
+        onEvent({ event: "platform_start", platform: p });
+      }
+    }
+  }
+
+  if (input.platforms.includes("instagram") && !existing.instagram) {
+    const t0 = Date.now();
     try {
       const r = await publishInstagramReel({
         videoUrl: draft.videoUrl,
         caption: appendLibraryFooter(extractCaption(draft.scriptMd ?? "")),
+        onProgress: (stage, opts) =>
+          onEvent({ event: "platform_stage", platform: "instagram", stage, pct: opts?.pct ?? 0, attempt: opts?.attempt, maxAttempts: opts?.maxAttempts, note: opts?.note }),
       });
       platformPostIds.instagram = r.postId;
+      onEvent({ event: "platform_done", platform: "instagram", ok: true, postId: r.postId, durationMs: Date.now() - t0 });
     } catch (e) {
-      if (e instanceof PublisherRefusal) {
-        failures.push({ platform: "instagram", reason: e.reason, detail: e.detail });
-      } else {
-        failures.push({ platform: "instagram", reason: "exception", detail: String((e as Error).message) });
-      }
+      const failure =
+        e instanceof PublisherRefusal
+          ? { platform: "instagram", reason: e.reason, detail: e.detail }
+          : { platform: "instagram", reason: "exception", detail: String((e as Error).message) };
+      failures.push(failure);
+      onEvent({ event: "platform_done", platform: "instagram", ok: false, reason: failure.reason, detail: failure.detail, durationMs: Date.now() - t0 });
     }
   }
-  if (input.platforms.includes("youtube") && existing.youtube) {
-    skipped.push("youtube");
-  } else if (input.platforms.includes("youtube")) {
+  if (input.platforms.includes("youtube") && !existing.youtube) {
+    const t0 = Date.now();
     try {
       // Prefer the HTTPS Blob URL so this works on Vercel (no local FS).
       // CLI/dev callers can still pass a local path if they want.
@@ -128,30 +161,43 @@ export async function publishDraft(input: PublishInput): Promise<PublishResult> 
         videoPath: `${process.cwd()}/public/renders/${draft.id}/video.mp4`,
         title: extractFirstLine(draft.scriptMd ?? "Untitled"),
         description: appendLibraryFooter(extractCaption(draft.scriptMd ?? "")),
+        onProgress: (stage, opts) =>
+          onEvent({ event: "platform_stage", platform: "youtube", stage, pct: opts?.pct ?? 0, attempt: opts?.attempt, maxAttempts: opts?.maxAttempts, note: opts?.note }),
       });
       platformPostIds.youtube = r.videoId;
+      onEvent({ event: "platform_done", platform: "youtube", ok: true, postId: r.videoId, durationMs: Date.now() - t0 });
     } catch (e) {
-      if (e instanceof YouTubePublisherRefusal) {
-        failures.push({ platform: "youtube", reason: e.reason, detail: e.detail });
-      } else {
-        failures.push({ platform: "youtube", reason: "exception", detail: String((e as Error).message) });
-      }
+      const failure =
+        e instanceof YouTubePublisherRefusal
+          ? { platform: "youtube", reason: e.reason, detail: e.detail }
+          : { platform: "youtube", reason: "exception", detail: String((e as Error).message) };
+      failures.push(failure);
+      onEvent({ event: "platform_done", platform: "youtube", ok: false, reason: failure.reason, detail: failure.detail, durationMs: Date.now() - t0 });
     }
   }
-  if (input.platforms.includes("facebook") && existing.facebook) {
-    skipped.push("facebook");
-  } else if (input.platforms.includes("facebook") && isFacebookConfigured()) {
-    try {
-      const r = await publishFacebookReel({
-        videoUrl: draft.videoUrl,
-        description: appendLibraryFooter(extractCaption(draft.scriptMd ?? "")),
-      });
-      platformPostIds.facebook = r.postId;
-    } catch (e) {
-      if (e instanceof FacebookPublisherRefusal) {
-        failures.push({ platform: "facebook", reason: e.reason, detail: e.detail });
-      } else {
-        failures.push({ platform: "facebook", reason: "exception", detail: String((e as Error).message) });
+  if (input.platforms.includes("facebook") && !existing.facebook) {
+    if (!isFacebookConfigured()) {
+      const failure = { platform: "facebook", reason: "missing_env", detail: "META_FACEBOOK_PAGE_ID / META_GRAPH_ACCESS_TOKEN not set" };
+      failures.push(failure);
+      onEvent({ event: "platform_done", platform: "facebook", ok: false, reason: failure.reason, detail: failure.detail, durationMs: 0 });
+    } else {
+      const t0 = Date.now();
+      try {
+        const r = await publishFacebookReel({
+          videoUrl: draft.videoUrl,
+          description: appendLibraryFooter(extractCaption(draft.scriptMd ?? "")),
+          onProgress: (stage, opts) =>
+            onEvent({ event: "platform_stage", platform: "facebook", stage, pct: opts?.pct ?? 0, attempt: opts?.attempt, maxAttempts: opts?.maxAttempts, note: opts?.note }),
+        });
+        platformPostIds.facebook = r.postId;
+        onEvent({ event: "platform_done", platform: "facebook", ok: true, postId: r.postId, durationMs: Date.now() - t0 });
+      } catch (e) {
+        const failure =
+          e instanceof FacebookPublisherRefusal
+            ? { platform: "facebook", reason: e.reason, detail: e.detail }
+            : { platform: "facebook", reason: "exception", detail: String((e as Error).message) };
+        failures.push(failure);
+        onEvent({ event: "platform_done", platform: "facebook", ok: false, reason: failure.reason, detail: failure.detail, durationMs: Date.now() - t0 });
       }
     }
   }
@@ -226,6 +272,15 @@ export async function publishDraft(input: PublishInput): Promise<PublishResult> 
     failures.length === 0 ||
     thisRunPosted.length > 0 ||
     skipped.length === input.platforms.length;
+
+  onEvent({
+    event: "done",
+    ok: thisRunOk,
+    platformPostIds,
+    failures,
+    skipped,
+    totalDurationMs: Date.now() - runStart,
+  });
 
   return { ok: thisRunOk, platformPostIds, failures, skipped };
 }

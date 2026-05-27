@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { REQUEST_CHANGES_REASONS, type RequestChangesReason } from "@/lib/social/review-reasons";
+import { PublishProgress } from "./PublishProgress";
 
 type Draft = {
   id: string;
@@ -82,7 +83,11 @@ export function DraftReviewActions({
     }
   }
 
-  async function publish() {
+  const [publishingPlatforms, setPublishingPlatforms] = useState<
+    Array<"instagram" | "youtube" | "facebook"> | null
+  >(null);
+
+  function startPublish() {
     if (!confirm) {
       setError("Tick the attestation checkbox before publishing.");
       return;
@@ -94,40 +99,21 @@ export function DraftReviewActions({
       setError("Select at least one platform.");
       return;
     }
-    setBusy("publish");
     setError(null);
-    try {
-      const res = await fetch(`/api/admin/drafts/${draft.id}/publish`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          platforms: sel,
-          iAmTheReviewerAndIWantToPublish: true,
-        }),
-      });
-      const j = await res.json().catch(() => null);
-      if (!res.ok) {
-        const detail =
-          (j?.failures && j.failures.length > 0
-            ? j.failures
-                .map((f: { platform: string; reason: string; detail?: string }) =>
-                  `${f.platform}: ${f.reason}${f.detail ? ` — ${f.detail}` : ""}`,
-                )
-                .join("; ")
-            : null) ??
-          j?.detail ??
-          j?.error ??
-          "Publish failed";
-        setError(detail);
-      } else {
-        router.refresh();
-      }
-    } finally {
-      setBusy(null);
-    }
+    setBusy("publish");
+    setPublishingPlatforms(sel);
   }
 
-  const canPublishNow = draft.status === "editor_reviewed" && draft.videoUrl;
+  // Match the server-side gate in /api/admin/drafts/[id]/publish.
+  // `posted` and `failed` are publishable too because publishDraft
+  // now merges into existing platformPostIds — re-clicking publish
+  // is the recovery path for a partial-success run.
+  const canPublishNow =
+    (draft.status === "editor_reviewed" ||
+      draft.status === "scheduled" ||
+      draft.status === "posted" ||
+      draft.status === "failed") &&
+    !!draft.videoUrl;
 
   return (
     <section className="card p-5 mt-4">
@@ -281,26 +267,60 @@ export function DraftReviewActions({
           </span>
         </label>
 
-        <button
-          type="button"
-          onClick={publish}
-          disabled={!canPublishNow || !confirm || !capabilities.publish || busy === "publish"}
-          className="mt-3 btn-primary"
-        >
-          {busy === "publish" ? "Publishing…" : "Publish to selected platforms"}
-        </button>
+        {!publishingPlatforms && (
+          <button
+            type="button"
+            onClick={startPublish}
+            disabled={!canPublishNow || !confirm || !capabilities.publish}
+            className="mt-3 btn-primary"
+          >
+            Publish to selected platforms
+          </button>
+        )}
 
-        {!capabilities.publish ? (
+        {!publishingPlatforms && !capabilities.publish ? (
           <p className="mt-2 text-xs text-ink-400">
             Publishing requires the editor or admin role.
           </p>
-        ) : !canPublishNow ? (
+        ) : !publishingPlatforms && !canPublishNow ? (
           <p className="mt-2 text-xs text-ink-400">
-            {draft.status !== "editor_reviewed"
+            {draft.status !== "editor_reviewed" &&
+            draft.status !== "scheduled" &&
+            draft.status !== "posted" &&
+            draft.status !== "failed"
               ? "Both clinician and editor must approve first."
-              : "Draft has no video URL yet — render it and host via a public HTTPS URL."}
+              : !draft.videoUrl
+                ? "Draft has no video URL yet — render it and host via a public HTTPS URL."
+                : null}
           </p>
         ) : null}
+
+        {publishingPlatforms && (
+          <div className="mt-4">
+            <PublishProgress
+              draftId={draft.id}
+              platforms={publishingPlatforms}
+              onDone={(summary) => {
+                setBusy(null);
+                // Build a concise summary banner so the operator sees
+                // what happened at a glance, then refresh the page
+                // so the queue + post-id strip reflect the new state.
+                if (!summary.ok) {
+                  setError(
+                    summary.failures
+                      .map((f) => `${f.platform}: ${f.reason}${f.detail ? ` — ${f.detail.slice(0, 200)}` : ""}`)
+                      .join("; "),
+                  );
+                }
+                router.refresh();
+              }}
+              onCancel={() => {
+                setBusy(null);
+                setPublishingPlatforms(null);
+              }}
+            />
+          </div>
+        )}
       </div>
 
       {error && (

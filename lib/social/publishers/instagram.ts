@@ -42,10 +42,14 @@ export class PublisherRefusal extends Error {
   }
 }
 
+import type { ProgressCallback } from "../publish-progress";
+
 export type InstagramPublishInput = {
   videoUrl: string; // Public HTTPS URL Meta can fetch
   caption: string;
   shareToFeed?: boolean; // default true
+  /** Optional progress callback; called as we transition stages. */
+  onProgress?: ProgressCallback;
 };
 
 export type InstagramPublishResult = {
@@ -79,6 +83,7 @@ const RETRY_MS = Number(process.env.IG_PUBLISH_RETRY_MS ?? "30000");
 const MAX_RETRIES = Number(process.env.IG_PUBLISH_MAX_RETRIES ?? "8");
 
 export async function publishInstagramReel(input: InstagramPublishInput): Promise<InstagramPublishResult> {
+  const onProgress = input.onProgress ?? (() => {});
   const igUserId = process.env.INSTAGRAM_BUSINESS_ACCOUNT_ID;
   const accessToken = process.env.META_GRAPH_ACCESS_TOKEN;
   if (!igUserId || !accessToken) {
@@ -95,6 +100,7 @@ export async function publishInstagramReel(input: InstagramPublishInput): Promis
   }
 
   // 1) Create container
+  onProgress("container_create", { pct: 5, note: "Sending video URL to Meta" });
   const createUrl = `https://graph.facebook.com/${GRAPH_VERSION}/${igUserId}/media`;
   const createRes = await fetch(createUrl, {
     method: "POST",
@@ -115,14 +121,33 @@ export async function publishInstagramReel(input: InstagramPublishInput): Promis
 
   // 2) Warmup — give Meta time to transcode the source video before
   //    we attempt publish. See module header for why we don't poll.
+  //    We tick progress every 5s so the UI shows movement during the
+  //    long pre-publish wait. pct ramps 10 -> 40 across warmup.
+  onProgress("warmup", { pct: 10, note: `Meta is transcoding (warmup ${Math.round(WARMUP_MS / 1000)}s)` });
+  const warmupStart = Date.now();
+  const warmupTicker = setInterval(() => {
+    const elapsed = Date.now() - warmupStart;
+    const ratio = Math.min(1, elapsed / WARMUP_MS);
+    const pct = 10 + Math.round(ratio * 30);
+    onProgress("warmup", { pct, note: `Transcoding... ${Math.round(elapsed / 1000)}s / ${Math.round(WARMUP_MS / 1000)}s` });
+  }, 5000);
   await sleep(WARMUP_MS);
+  clearInterval(warmupTicker);
 
   // 3) Blind publish with retry-on-transient. We can't read container
   //    status (Page-token Auth Error subcode 33) so we just keep poking
   //    media_publish until either it succeeds or we exhaust retries.
+  //    pct ramps 40 -> 95 across the retry loop.
   const publishUrl = `https://graph.facebook.com/${GRAPH_VERSION}/${igUserId}/media_publish`;
   let lastError = "no attempts made";
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    const attemptPct = 40 + Math.round((attempt / MAX_RETRIES) * 55);
+    onProgress("publish_attempt", {
+      pct: attemptPct,
+      attempt,
+      maxAttempts: MAX_RETRIES,
+      note: `Asking Meta to publish (attempt ${attempt}/${MAX_RETRIES})`,
+    });
     const publishRes = await fetch(publishUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -132,6 +157,7 @@ export async function publishInstagramReel(input: InstagramPublishInput): Promis
       | { id: string }
       | { error: { message: string } };
     if ("id" in publishJson) {
+      onProgress("finalising", { pct: 100, note: "Published" });
       return { postId: publishJson.id };
     }
     const errMsg = "error" in publishJson ? publishJson.error.message : "unknown";
@@ -146,6 +172,12 @@ export async function publishInstagramReel(input: InstagramPublishInput): Promis
       throw new PublisherRefusal("publish_failed", JSON.stringify(publishJson));
     }
     if (attempt < MAX_RETRIES) {
+      onProgress("transcoding_wait", {
+        pct: attemptPct,
+        attempt,
+        maxAttempts: MAX_RETRIES,
+        note: `Meta says "not ready yet" — waiting ${Math.round(RETRY_MS / 1000)}s before retry`,
+      });
       await sleep(RETRY_MS);
     }
   }
