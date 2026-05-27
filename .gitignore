@@ -51,3 +51,9 @@ scripts/push-vercel-secrets.sh
 
 # Lighthouse CI
 /.lighthouseci/
+
+# Marketing collateral working files — slide PNGs, per-scene MP4 parts,
+# narration MP3s. The final .pptx and .mp4 are committed; this is scratch.
+marketing/pitch-video/_work/
+# Office / Keynote lock files when the deck is open for review.
+~$*.pptx
