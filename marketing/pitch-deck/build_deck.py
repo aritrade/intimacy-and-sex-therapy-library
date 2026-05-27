@@ -21,7 +21,9 @@ from pptx import Presentation
 from pptx.dml.color import RGBColor
 from pptx.enum.shapes import MSO_SHAPE
 from pptx.enum.text import PP_ALIGN
-from pptx.util import Inches, Pt
+from pptx.oxml.ns import qn
+from pptx.util import Emu, Inches, Pt
+from lxml import etree
 
 # ---- Brand palette (matches the live site's design tokens) -----------------
 
@@ -33,14 +35,33 @@ ACCENT = RGBColor(0xC9, 0x6A, 0x4B)  # coral accent
 TEAL = RGBColor(0x3F, 0x7E, 0x7A)  # teal
 PLUM = RGBColor(0x6B, 0x46, 0x6D)  # plum
 
-WIDTH = Inches(13.333)
-HEIGHT = Inches(7.5)
+# Standard 16:9 widescreen EMU (PowerPoint's native preset). Inches(13.333)
+# rounds to 12,191,695 EMU and PowerPoint flags that as "off-grid", showing a
+# "found a problem with content" repair dialog. Pinning to the exact EMU
+# value the official template uses keeps PowerPoint happy.
+WIDTH = Emu(12_192_000)
+HEIGHT = Emu(6_858_000)
+
+
+def _strip_style(shape) -> None:
+    """Remove the auto-generated theme <p:style> element from an auto-shape.
+
+    python-pptx attaches a default theme style block to every add_shape() call.
+    PowerPoint occasionally flags those style refs ("PowerPoint found a problem
+    with content") when the shape uses an explicit solid fill that contradicts
+    the theme. Easiest fix: drop the <p:style> element entirely.
+    """
+    sp = shape._element
+    style = sp.find(qn("p:style"))
+    if style is not None:
+        sp.remove(style)
 
 
 def _fill(shape, color: RGBColor) -> None:
     shape.fill.solid()
     shape.fill.fore_color.rgb = color
     shape.line.fill.background()
+    _strip_style(shape)
 
 
 def _text_box(slide, left, top, width, height, text, *,
@@ -67,8 +88,24 @@ def _text_box(slide, left, top, width, height, text, *,
 
 
 def _bg(slide, color: RGBColor = BG_CREAM) -> None:
-    rect = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, 0, 0, WIDTH, HEIGHT)
-    _fill(rect, color)
+    """Paint the slide background via the cSld background API.
+
+    Earlier versions of this script added a full-bleed RECTANGLE auto-shape
+    instead. That works, but it left an extra Z-ordered shape that
+    PowerPoint flagged in the repair dialog on macOS. The cSld <p:bg>
+    element is the OOXML-native way to do this.
+    """
+    cSld = slide._element.find(qn("p:cSld"))
+    existing = cSld.find(qn("p:bg"))
+    if existing is not None:
+        cSld.remove(existing)
+    bg_xml = (
+        '<p:bg xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"'
+        ' xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">'
+        '<p:bgPr><a:solidFill><a:srgbClr val="{rgb}"/></a:solidFill>'
+        '<a:effectLst/></p:bgPr></p:bg>'
+    ).format(rgb=f"{color[0]:02X}{color[1]:02X}{color[2]:02X}")
+    cSld.insert(0, etree.fromstring(bg_xml))
 
 
 def _accent_bar(slide, color: RGBColor = ACCENT) -> None:
@@ -609,6 +646,14 @@ def main() -> None:
     prs = Presentation()
     prs.slide_width = WIDTH
     prs.slide_height = HEIGHT
+    # python-pptx's default template is 4:3; setting slide_width/height only
+    # changes the dimensions, not the `type` attribute on <p:sldSz>. Without
+    # this fixup, PowerPoint sees 16:9 EMU dimensions with type="screen4x3"
+    # and shows a "found a problem with content" repair prompt. Switching the
+    # type to "screen16x9" matches the dimensions and clears the warning.
+    sld_sz = prs.part._element.find(qn("p:sldSz"))
+    if sld_sz is not None:
+        sld_sz.set("type", "screen16x9")
 
     builders = [
         slide_title,
