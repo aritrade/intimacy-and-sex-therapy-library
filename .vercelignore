@@ -1,0 +1,16 @@
+# Files included in the local checkout but irrelevant (or dangerous) for
+# production deploys. Vercel CLI uploads everything in the project root by
+# default, so we duplicate a few entries from .gitignore that contain ad-hoc
+# operator scripts and secret-bearing files we never want in a deploy.
+
+scripts/_oneoff/
+scripts/push-vercel-secrets.sh
+.env.local
+.env.production.local
+*.csv
+*.log
+
+# Build caches and editor cruft.
+.next
+node_modules
+.DS_Store
