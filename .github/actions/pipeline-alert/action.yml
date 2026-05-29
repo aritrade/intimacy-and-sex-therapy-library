@@ -1,0 +1,52 @@
+name: pipeline-alert
+description: >
+  Open (or update, deduped by title) a GitHub issue when a pipeline check
+  fails. Surfaces silent cron/auth failures in the repo's issue notifications
+  instead of letting them pile up unseen in the Actions tab.
+
+inputs:
+  title:
+    description: "Issue title. Also the dedup key — recurrences comment on the existing open issue."
+    required: true
+  body:
+    description: "Issue body / recurrence comment text."
+    required: true
+  token:
+    description: "GITHUB_TOKEN with issues:write."
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        ALERT_TITLE: ${{ inputs.title }}
+        ALERT_BODY: ${{ inputs.body }}
+      run: |
+        set -euo pipefail
+        # Idempotent label create (ignore "already exists").
+        gh label create pipeline-alert \
+          --color B60205 \
+          --description "Automated pipeline failure alert" >/dev/null 2>&1 || true
+
+        existing=$(gh issue list \
+          --label pipeline-alert --state open \
+          --search "${ALERT_TITLE} in:title" \
+          --json number,title \
+          --jq ".[] | select(.title==\"${ALERT_TITLE}\") | .number" | head -n1)
+
+        ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+        run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+
+        if [ -n "${existing}" ]; then
+          gh issue comment "${existing}" \
+            --body "$(printf '%s\n\nRecurred at %s\nRun: %s' "${ALERT_BODY}" "${ts}" "${run_url}")"
+          echo "Updated existing alert issue #${existing}"
+        else
+          gh issue create \
+            --label pipeline-alert \
+            --title "${ALERT_TITLE}" \
+            --body "$(printf '%s\n\nFirst seen %s\nRun: %s' "${ALERT_BODY}" "${ts}" "${run_url}")"
+          echo "Created new alert issue"
+        fi

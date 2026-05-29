@@ -1,0 +1,89 @@
+# Cron auth canary.
+#
+# The publish-due 401 (CRON_SECRET drift between GitHub Actions and Vercel)
+# failed silently every hour for days before anyone noticed. This canary
+# turns that failure mode into an alert:
+#
+#   * POSITIVE probe — call the cron endpoint with the REAL CRON_SECRET. A 401
+#     means the GitHub secret no longer matches Vercel (drift) — alert.
+#   * NEGATIVE probe — call it with a BOGUS secret. Anything other than 401
+#     means auth is not actually being enforced (e.g. CRON_SECRET unset on
+#     Vercel) — alert.
+#
+# publish-due is idempotent and side-effect-free when nothing is due
+# (scanned:0), so it is a safe probe target — the same endpoint the hourly
+# publish-due workflow already calls.
+
+name: cron-auth-canary
+
+on:
+  schedule:
+    # Every 6 hours at :41 (offset from publish-due :07 and render-due :23).
+    - cron: "41 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: cron-auth-canary
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Probe cron auth (positive + negative)
+        env:
+          DEPLOY_URL: ${{ secrets.VERCEL_DEPLOY_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -u
+          if [ -z "${DEPLOY_URL}" ] || [ -z "${CRON_SECRET}" ]; then
+            echo "::error ::VERCEL_DEPLOY_URL or CRON_SECRET is empty — cannot probe."
+            exit 1
+          fi
+
+          endpoint="${DEPLOY_URL}/api/cron/publish-due"
+          fail=0
+
+          pos=$(curl -sS -o /dev/null -w "%{http_code}" -X POST "${endpoint}" \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            -H "Content-Type: application/json" -d '{}')
+          echo "positive (real secret)  -> HTTP ${pos}  (expect 200 or 503)"
+          if [ "${pos}" = "401" ]; then
+            echo "::error ::publish-due rejected the REAL CRON_SECRET — GitHub/Vercel secret drift."
+            fail=1
+          fi
+
+          neg=$(curl -sS -o /dev/null -w "%{http_code}" -X POST "${endpoint}" \
+            -H "Authorization: Bearer canary-deliberately-wrong" \
+            -H "Content-Type: application/json" -d '{}')
+          echo "negative (bogus secret) -> HTTP ${neg}  (expect 401)"
+          if [ "${neg}" != "401" ]; then
+            echo "::error ::publish-due did NOT reject a bogus secret (got ${neg}) — auth not enforced."
+            fail=1
+          fi
+
+          exit ${fail}
+
+      - name: Alert on failure
+        if: failure()
+        uses: ./.github/actions/pipeline-alert
+        with:
+          title: "Cron auth canary failed (CRON_SECRET drift / auth not enforced)"
+          body: |
+            The cron-auth canary detected a problem with `/api/cron/publish-due` auth.
+
+            Likely cause: `CRON_SECRET` drifted between GitHub Actions and Vercel,
+            or it is unset on Vercel. Re-sync it:
+
+            1. `Z=$(openssl rand -hex 32)`
+            2. `vercel env rm CRON_SECRET production --yes && printf "%s" "$Z" | vercel env add CRON_SECRET production`
+            3. `gh secret set CRON_SECRET --body "$Z"`
+            4. Redeploy production (push to main).
+          token: ${{ github.token }}

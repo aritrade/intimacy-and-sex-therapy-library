@@ -1,0 +1,78 @@
+# Daily content generation.
+#
+# Runs the same code as the Vercel cron (lib/social/daily-generate-core.ts)
+# but on GitHub Actions, which has no 60s function cap — long-form essays with
+# a budget retry occasionally brushed Vercel's Hobby ceiling and got killed.
+#
+# ── CUTOVER STATUS ──────────────────────────────────────────────────────────
+# This workflow is currently MANUAL-ONLY (workflow_dispatch). The Vercel cron
+# in vercel.json is still the scheduled generator, so the daily `schedule:`
+# trigger below stays commented out to avoid double-generation.
+#
+# To complete the migration once GROQ_API_KEY is set as a GitHub secret and a
+# manual run has been verified:
+#   1. Uncomment the `schedule:` block below (23:30 UTC, matching the old cron).
+#   2. Remove the "/api/cron/daily-generate" entry from vercel.json `crons`.
+#   3. Commit + push.
+#
+# Required GitHub Actions secrets:
+#   - DATABASE_URL   (Neon postgres URL — already configured)
+#   - GROQ_API_KEY   (LLM key — NOT yet set; add via `gh secret set GROQ_API_KEY`)
+
+name: daily-generate
+
+on:
+  # schedule:
+  #   # 05:00 IST = 23:30 UTC. Uncomment at cutover (and remove the Vercel cron).
+  #   - cron: "30 23 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: daily-generate
+  cancel-in-progress: false
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - run: npm ci --no-audit --no-fund
+
+      - name: Generate daily drafts
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          LLM_PROVIDER: groq
+          GROQ_MODEL: ${{ vars.GROQ_MODEL || 'llama-3.3-70b-versatile' }}
+        run: npx tsx scripts/daily-generate.ts
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "### daily-generate summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "* trigger: ${{ github.event_name }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "* status : ${{ job.status }}" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Alert on failure
+        if: failure()
+        uses: ./.github/actions/pipeline-alert
+        with:
+          title: "daily-generate workflow failed"
+          body: |
+            The daily content generator failed. Common causes: missing
+            `GROQ_API_KEY` secret, LLM provider outage, or a DB connectivity
+            issue. Check the run logs; drafts are not generated until this is
+            green.
+          token: ${{ github.token }}
