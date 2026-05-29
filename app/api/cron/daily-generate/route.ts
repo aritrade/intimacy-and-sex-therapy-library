@@ -8,8 +8,25 @@
  * the queue for human review.
  *
  * What it generates per run (configurable via env):
- *   - 2 short-form scripts → reels for IG + YT Shorts (one EN, one HI)
- *   - 1 long-form script → YouTube essay
+ *   - 3 short-form scripts → 30s reels for IG + YT Shorts
+ *     (rotates en / hinglish across the three picks)
+ *   - 2 long-form scripts → 2-minute YouTube essays (always EN)
+ *
+ * Concurrency: all five generations run in PARALLEL via
+ * `Promise.allSettled`. Earlier versions ran them sequentially with
+ * the long-form last; that wedged the long-form against Vercel's
+ * effective 60s function-timeout cap because the reels burned the
+ * first ~30-50s. Per the audit-log forensic on 2026-05-28, the
+ * function consistently created the 2 reels and was killed before
+ * the long-form `db.insert` ran (no `daily_generate_cron` audit row
+ * for any 5/26 or 5/27 run, even though both runs persisted reels).
+ * Running in parallel collapses wall time to max(reel, reel, ...,
+ * essay) which fits comfortably inside 60s on Groq llama-3.3-70b
+ * (each reel ≈ 1-3s, each essay ≈ 15-30s with one budget retry).
+ *
+ * Observability: emits a `daily_generate_started` audit at the top
+ * AND a per-item `daily_generate_item` audit after each generation
+ * resolves, so a mid-run timeout still leaves a forensic trail.
  *
  * Idempotency: the cron looks at the last 14 days of drafts to avoid
  * picking briefs we've already used; if multiple cron retries hit the
@@ -102,8 +119,10 @@ async function handle(req: Request): Promise<NextResponse> {
     if (matched) recentlyUsedIds.add(matched.id);
   }
 
-  const shortFormCount = Number(process.env.DAILY_GENERATE_SHORT_FORM ?? 2);
-  const longFormCount = Number(process.env.DAILY_GENERATE_LONG_FORM ?? 1);
+  // Default mix per day: 3 short-form reels (30s each) + 2 long-form
+  // essays (120s each). Override via env without code changes.
+  const shortFormCount = Number(process.env.DAILY_GENERATE_SHORT_FORM ?? 3);
+  const longFormCount = Number(process.env.DAILY_GENERATE_LONG_FORM ?? 2);
 
   const picks = pickBriefsForToday({
     date: new Date(),
@@ -112,34 +131,30 @@ async function handle(req: Request): Promise<NextResponse> {
     recentlyUsedIds,
   });
 
-  const summary: GenerateSummary = {
-    attempted: 0,
-    created: 0,
-    refused: 0,
-    failed: 0,
-    briefIds: [],
-    errors: [],
+  // Up-front audit so a mid-run timeout still leaves evidence the cron
+  // fired. We can correlate this to the per-item audits emitted from
+  // each `generateOne` to figure out which step Vercel killed.
+  await recordAudit({
+    actor: "cron:vercel",
+    action: "daily_generate_started",
+    meta: {
+      shortFormPicks: picks.shortForm.length,
+      longFormPicks: picks.longForm.length,
+      stuckCount,
+      briefIds: [...picks.shortForm.map((b) => b.id), ...picks.longForm.map((b) => b.id)],
+    },
+  });
+
+  // Build the full job list up-front, then dispatch in PARALLEL.
+  // Sequential awaiting (older code) wedged the long-form against
+  // Vercel's effective 60s timeout — see file header.
+  type Job = {
+    brief: ContentBrief;
+    language: "en" | "hi" | "hinglish";
+    style: "typography" | "stock" | "carousel" | "long_form_essay";
+    durationSeconds: number;
+    kind: string;
   };
-
-  // Rotate language across short-form picks: alternate en / hinglish.
-  // Long-form is always English (Indian audience, but watch-time lives
-  // on YT search which favours English keyword surfaces).
-  const shortLangs: Array<"en" | "hinglish"> = ["en", "hinglish"];
-  for (let i = 0; i < picks.shortForm.length; i++) {
-    const brief = picks.shortForm[i];
-    const language = shortLangs[i % shortLangs.length];
-    // Alternate stylet across short-form picks for A/B testing (per user request).
-    const style = i % 2 === 0 ? "typography" : "stock";
-    await generateOne({
-      brief,
-      language,
-      style,
-      durationSeconds: 60,
-      kind: "reel",
-      summary,
-    });
-  }
-
   // Long-form essays target 2 minutes (~240 words at our 120 wpm narrator
   // pace — Jenny @ -10% rate). Tightened down from 240s on 2026-05-27
   // after the first batch of 4-minute essays came back as 5-8 word
@@ -150,18 +165,74 @@ async function handle(req: Request): Promise<NextResponse> {
   // underwrites, generateScript throws ScriptRefusal("script_too_short")
   // and this brief is marked refused for today.
   const longFormSeconds = Number(process.env.DAILY_GENERATE_LONG_FORM_SECONDS ?? 120);
-  for (const brief of picks.longForm) {
-    await generateOne({
+  // Short-form duration. 30s is the IG/YT-Shorts sweet spot for the
+  // current narrator pace (~120 wpm) — gives roughly 3 scenes of
+  // 10-15 spoken words each, which is what the typography/stock
+  // playbooks are tuned for. Override via env if you want 60s reels.
+  const shortFormSeconds = Number(process.env.DAILY_GENERATE_SHORT_FORM_SECONDS ?? 30);
+  // Long-form goes FIRST in the job list (and therefore first into the
+  // event loop's microtask queue) because it's the most expensive call
+  // and the most painful to drop — better to lose a reel than the
+  // single long-form essay if a partial timeout still happens.
+  const jobs: Job[] = [
+    ...picks.longForm.map<Job>((brief) => ({
       brief,
       language: "en",
       style: "long_form_essay",
       durationSeconds: longFormSeconds,
       kind: "long_form",
-      summary,
-    });
+    })),
+    // Rotate language across short-form picks: alternate en / hinglish.
+    // Long-form is always English (Indian audience, but watch-time lives
+    // on YT search which favours English keyword surfaces).
+    ...picks.shortForm.map<Job>((brief, i) => ({
+      brief,
+      language: (["en", "hinglish"] as const)[i % 2],
+      // Alternate style across short-form picks for A/B testing.
+      style: i % 2 === 0 ? "typography" : "stock",
+      durationSeconds: shortFormSeconds,
+      kind: "reel",
+    })),
+  ];
+
+  const settled = await Promise.allSettled(jobs.map((j) => generateOne(j)));
+
+  const summary: GenerateSummary = {
+    attempted: jobs.length,
+    created: 0,
+    refused: 0,
+    failed: 0,
+    briefIds: [],
+    errors: [],
+  };
+  for (let i = 0; i < settled.length; i++) {
+    const job = jobs[i];
+    const r = settled[i];
+    if (r.status === "fulfilled") {
+      const v = r.value;
+      if (v.outcome === "created") {
+        summary.created += 1;
+        summary.briefIds.push(job.brief.id);
+      } else if (v.outcome === "refused") {
+        summary.refused += 1;
+        summary.errors.push({ briefId: job.brief.id, reason: `refusal:${v.reason}` });
+      } else {
+        summary.failed += 1;
+        summary.errors.push({ briefId: job.brief.id, reason: v.reason });
+      }
+    } else {
+      // A `generateOne` rejection means the function itself threw past
+      // its own try/catch — we should never see this, but treat it as
+      // failed so the summary is accurate.
+      summary.failed += 1;
+      summary.errors.push({
+        briefId: job.brief.id,
+        reason: String((r.reason as Error)?.message ?? r.reason).slice(0, 200),
+      });
+    }
   }
 
-  void recordAudit({
+  await recordAudit({
     actor: "cron:vercel",
     action: "daily_generate_cron",
     meta: {
@@ -170,11 +241,17 @@ async function handle(req: Request): Promise<NextResponse> {
       refused: summary.refused,
       failed: summary.failed,
       briefIds: summary.briefIds,
+      errors: summary.errors,
     },
   });
 
   return NextResponse.json({ summary });
 }
+
+type GenerateOutcome =
+  | { outcome: "created" }
+  | { outcome: "refused"; reason: string }
+  | { outcome: "failed"; reason: string };
 
 async function generateOne(args: {
   brief: ContentBrief;
@@ -182,10 +259,8 @@ async function generateOne(args: {
   style: "typography" | "stock" | "carousel" | "long_form_essay";
   durationSeconds: number;
   kind: string;
-  summary: GenerateSummary;
-}) {
-  const { brief, language, style, durationSeconds, kind, summary } = args;
-  summary.attempted += 1;
+}): Promise<GenerateOutcome> {
+  const { brief, language, style, durationSeconds, kind } = args;
 
   let resource:
     | { title: string; authors?: string[]; year?: number; sourceName: string; url: string }
@@ -243,16 +318,32 @@ async function generateOne(args: {
         status: "script_draft",
       });
 
-    summary.created += 1;
-    summary.briefIds.push(brief.id);
+    // Per-item audit — flushed BEFORE we return so it lands even if a
+    // sibling job still holds the function open. Awaited (not `void`)
+    // for the same reason: we want this in the audit table even if
+    // Vercel kills the function 50ms later.
+    await recordAudit({
+      actor: "cron:vercel",
+      action: "daily_generate_item",
+      meta: { briefId: brief.id, kind, language, outcome: "created" },
+    });
+    return { outcome: "created" };
   } catch (e) {
     if (e instanceof ScriptRefusal) {
-      summary.refused += 1;
-      summary.errors.push({ briefId: brief.id, reason: `refusal:${e.reason}` });
-    } else {
-      summary.failed += 1;
-      summary.errors.push({ briefId: brief.id, reason: String((e as Error).message).slice(0, 200) });
+      await recordAudit({
+        actor: "cron:vercel",
+        action: "daily_generate_item",
+        meta: { briefId: brief.id, kind, language, outcome: "refused", reason: e.reason },
+      });
+      return { outcome: "refused", reason: e.reason };
     }
+    const msg = String((e as Error).message).slice(0, 200);
+    await recordAudit({
+      actor: "cron:vercel",
+      action: "daily_generate_item",
+      meta: { briefId: brief.id, kind, language, outcome: "failed", reason: msg },
+    });
+    return { outcome: "failed", reason: msg };
   }
 }
 
