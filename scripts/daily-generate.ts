@@ -39,8 +39,11 @@ async function main() {
   console.log(`[daily-generate] provider=${providerLabel()}`);
   // Sequential on GH Actions: no 60s cap here, and serialising the LLM calls
   // keeps us under Groq's tokens-per-minute limit (parallel bursts get 429'd).
+  // The inter-job delay spreads token usage across minute windows so even the
+  // last job stays under TPM — the 20-minute job budget easily absorbs it.
   const concurrency = Number(process.env.DAILY_GENERATE_CONCURRENCY ?? 1);
-  const result = await runDailyGenerate({ actor: "cron:gh-actions", concurrency });
+  const delayMs = Number(process.env.DAILY_GENERATE_DELAY_MS ?? 20000);
+  const result = await runDailyGenerate({ actor: "cron:gh-actions", concurrency, delayMs });
 
   if (result.skipped) {
     console.log(

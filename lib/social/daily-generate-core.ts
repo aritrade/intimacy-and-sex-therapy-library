@@ -60,6 +60,10 @@ export async function runDailyGenerate(opts?: {
   actor?: string;
   now?: Date;
   concurrency?: number;
+  /** Delay between sequential job starts (ms). Spreads token usage across
+   *  minute windows so we stay under the LLM's TPM limit. Ignored when
+   *  concurrency > 1. */
+  delayMs?: number;
 }): Promise<DailyGenerateResult> {
   const actor = opts?.actor ?? "cron:vercel";
   const now = opts?.now ?? new Date();
@@ -141,7 +145,8 @@ export async function runDailyGenerate(opts?: {
   ];
 
   const concurrency = Math.max(1, opts?.concurrency ?? jobs.length);
-  const settled = await mapSettled(jobs, concurrency, (j) => generateOne(j, actor));
+  const delayMs = Math.max(0, opts?.delayMs ?? 0);
+  const settled = await mapSettled(jobs, concurrency, (j) => generateOne(j, actor), delayMs);
 
   const summary: DailyGenerateSummary = {
     attempted: jobs.length,
@@ -199,13 +204,18 @@ async function mapSettled<T, R>(
   items: T[],
   limit: number,
   fn: (item: T) => Promise<R>,
+  delayMs = 0,
 ): Promise<PromiseSettledResult<R>[]> {
   const results: PromiseSettledResult<R>[] = new Array(items.length);
   let next = 0;
   async function worker() {
+    let didOne = false;
     while (true) {
       const i = next++;
       if (i >= items.length) return;
+      // Space sequential jobs apart so token usage straddles minute windows.
+      if (didOne && delayMs > 0) await sleep(delayMs);
+      didOne = true;
       try {
         results[i] = { status: "fulfilled", value: await fn(items[i]) };
       } catch (reason) {
@@ -216,6 +226,10 @@ async function mapSettled<T, R>(
   const workers = Array.from({ length: Math.min(limit, items.length) }, () => worker());
   await Promise.all(workers);
   return results;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 type GenerateOutcome =
