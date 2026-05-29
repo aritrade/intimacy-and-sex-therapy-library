@@ -22,10 +22,6 @@
       "schedule": "0 6 * * 1"
     },
     {
-      "path": "/api/cron/daily-generate",
-      "schedule": "30 23 * * *"
-    },
-    {
       "path": "/api/cron/daily-content-sync",
       "schedule": "30 21 * * *"
     }

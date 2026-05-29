@@ -4,27 +4,23 @@
 # but on GitHub Actions, which has no 60s function cap — long-form essays with
 # a budget retry occasionally brushed Vercel's Hobby ceiling and got killed.
 #
-# ── CUTOVER STATUS ──────────────────────────────────────────────────────────
-# This workflow is currently MANUAL-ONLY (workflow_dispatch). The Vercel cron
-# in vercel.json is still the scheduled generator, so the daily `schedule:`
-# trigger below stays commented out to avoid double-generation.
+# ── CUTOVER STATUS: LIVE ────────────────────────────────────────────────────
+# This is the scheduled daily generator (migrated off the Vercel cron, which
+# was capped at 60s on the Hobby plan). The "/api/cron/daily-generate" Vercel
+# cron has been removed from vercel.json. The route still exists for manual
+# Bearer-authed triggers, but is no longer scheduled.
 #
-# To complete the migration once GROQ_API_KEY is set as a GitHub secret and a
-# manual run has been verified:
-#   1. Uncomment the `schedule:` block below (23:30 UTC, matching the old cron).
-#   2. Remove the "/api/cron/daily-generate" entry from vercel.json `crons`.
-#   3. Commit + push.
-#
-# Required GitHub Actions secrets:
-#   - DATABASE_URL   (Neon postgres URL — already configured)
-#   - GROQ_API_KEY   (LLM key — NOT yet set; add via `gh secret set GROQ_API_KEY`)
+# Required GitHub Actions secrets / variables:
+#   - DATABASE_URL   (secret — Neon postgres URL)
+#   - GROQ_API_KEY   (secret — LLM key)
+#   - GROQ_MODEL     (variable — defaults to llama-3.3-70b-versatile)
 
 name: daily-generate
 
 on:
-  # schedule:
-  #   # 05:00 IST = 23:30 UTC. Uncomment at cutover (and remove the Vercel cron).
-  #   - cron: "30 23 * * *"
+  schedule:
+    # 05:00 IST = 23:30 UTC (matches the retired Vercel cron schedule).
+    - cron: "30 23 * * *"
   workflow_dispatch:
 
 permissions:
