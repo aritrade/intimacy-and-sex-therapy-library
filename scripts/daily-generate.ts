@@ -37,7 +37,10 @@ async function main() {
   }
 
   console.log(`[daily-generate] provider=${providerLabel()}`);
-  const result = await runDailyGenerate({ actor: "cron:gh-actions" });
+  // Sequential on GH Actions: no 60s cap here, and serialising the LLM calls
+  // keeps us under Groq's tokens-per-minute limit (parallel bursts get 429'd).
+  const concurrency = Number(process.env.DAILY_GENERATE_CONCURRENCY ?? 1);
+  const result = await runDailyGenerate({ actor: "cron:gh-actions", concurrency });
 
   if (result.skipped) {
     console.log(

@@ -47,10 +47,19 @@ type Job = {
  * Run one daily generation pass. `actor` distinguishes the caller in audit
  * rows ("cron:vercel" vs "cron:gh-actions"). Caller is responsible for the
  * auth gate and for ensuring DATABASE_URL is set.
+ *
+ * `concurrency` controls how many generations run at once:
+ *   - Vercel route: defaults to ALL-parallel (collapses wall time to fit the
+ *     60s Hobby function cap — at the cost of bursting the LLM's tokens-per-
+ *     minute limit, which is why some drafts get rate-limited).
+ *   - GitHub Actions: pass 1 (sequential). With a 20-minute budget there is no
+ *     timeout pressure, and serialising the calls keeps us under Groq's TPM
+ *     limit so all jobs land instead of 3-4 dying on 429s.
  */
 export async function runDailyGenerate(opts?: {
   actor?: string;
   now?: Date;
+  concurrency?: number;
 }): Promise<DailyGenerateResult> {
   const actor = opts?.actor ?? "cron:vercel";
   const now = opts?.now ?? new Date();
@@ -131,7 +140,8 @@ export async function runDailyGenerate(opts?: {
     })),
   ];
 
-  const settled = await Promise.allSettled(jobs.map((j) => generateOne(j, actor)));
+  const concurrency = Math.max(1, opts?.concurrency ?? jobs.length);
+  const settled = await mapSettled(jobs, concurrency, (j) => generateOne(j, actor));
 
   const summary: DailyGenerateSummary = {
     attempted: jobs.length,
@@ -179,6 +189,33 @@ export async function runDailyGenerate(opts?: {
   });
 
   return { skipped: false, stuckCount, ...summary };
+}
+
+/**
+ * Like `Promise.allSettled(items.map(fn))` but with a concurrency cap and
+ * order-preserving results. A pool of `limit` workers drains the queue.
+ */
+async function mapSettled<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T) => Promise<R>,
+): Promise<PromiseSettledResult<R>[]> {
+  const results: PromiseSettledResult<R>[] = new Array(items.length);
+  let next = 0;
+  async function worker() {
+    while (true) {
+      const i = next++;
+      if (i >= items.length) return;
+      try {
+        results[i] = { status: "fulfilled", value: await fn(items[i]) };
+      } catch (reason) {
+        results[i] = { status: "rejected", reason } as PromiseRejectedResult;
+      }
+    }
+  }
+  const workers = Array.from({ length: Math.min(limit, items.length) }, () => worker());
+  await Promise.all(workers);
+  return results;
 }
 
 type GenerateOutcome =
