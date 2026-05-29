@@ -20,6 +20,35 @@ export function isBasicAuthEnabled(): boolean {
   return Boolean(process.env.ADMIN_BASIC_USER && process.env.ADMIN_BASIC_PASS);
 }
 
+/**
+ * Validate a raw `Authorization` header value against the configured
+ * Basic-auth admin credentials. Returns true only when Basic-auth is
+ * enabled AND the header carries the exact username:password pair.
+ *
+ * Decoupled from `NextRequest` (takes the header string directly) so it
+ * can be reused by the Node-runtime API guard, which reads headers via
+ * `next/headers` rather than from a `NextRequest`. Comparison is
+ * constant-time, matching `adminAuthCheck`.
+ */
+export function basicAuthHeaderValid(header: string | null | undefined): boolean {
+  if (!isBasicAuthEnabled()) return false;
+  if (!header?.startsWith("Basic ")) return false;
+  let decoded: string;
+  try {
+    decoded = atob(header.slice("Basic ".length).trim());
+  } catch {
+    return false;
+  }
+  const sepIdx = decoded.indexOf(":");
+  if (sepIdx < 0) return false;
+  const candidateUser = decoded.slice(0, sepIdx);
+  const candidatePass = decoded.slice(sepIdx + 1);
+  return (
+    constantTimeEq(candidateUser, process.env.ADMIN_BASIC_USER!) &&
+    constantTimeEq(candidatePass, process.env.ADMIN_BASIC_PASS!)
+  );
+}
+
 export function adminAuthCheck(req: NextRequest): NextResponse | null {
   if (!isBasicAuthEnabled()) {
     // Basic-auth fallback is off (or creds not configured). The session-role
