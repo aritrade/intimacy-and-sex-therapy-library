@@ -380,6 +380,45 @@ export async function renderDraft(input: RenderInput): Promise<RenderResult> {
     },
   );
 
+  // The video MUST land on a public HTTPS host (Vercel Blob). The local
+  // `/renders/<id>/video.mp4` path only resolves under `next dev` on a
+  // developer laptop — it 404s on the deployment because `public/renders/`
+  // is gitignored and renders run on ephemeral CI runners whose filesystem
+  // is discarded. Persisting that local path into the DB produces a broken
+  // admin preview AND silently de-queues the draft from re-render (the
+  // batch scan in scripts/render-due.ts keys off `video_url IS NULL`), so
+  // the draft gets permanently stuck with a dead URL.
+  //
+  // Therefore, on any hosted / CI run we refuse to continue with a
+  // non-HTTPS video URL. Throwing keeps `video_url` NULL → the draft stays
+  // eligible for the next render pass, and the failure surfaces in the
+  // workflow summary + audit log instead of shipping a 404. Local dev still
+  // gets the `/renders/...` path so `next dev` previews keep working.
+  const videoHostedHttps =
+    !!videoBlob &&
+    videoBlob.hosted === "vercel-blob" &&
+    videoBlob.url.startsWith("https://");
+  const requirePublicHost = !!(
+    process.env.CI ||
+    process.env.GITHUB_ACTIONS ||
+    process.env.VERCEL
+  );
+  if (!videoHostedHttps && requirePublicHost) {
+    throw new Error(
+      "video rendered but could not be hoisted to Vercel Blob " +
+        "(BLOB_READ_WRITE_TOKEN missing/invalid or the upload failed). " +
+        "Refusing to persist a local /renders path that 404s on the " +
+        "deployment — leaving video_url unset so the draft re-renders.",
+    );
+  }
+  if (!videoHostedHttps) {
+    console.warn(
+      "[render] video not on an HTTPS blob host; falling back to the local " +
+        "/renders path (only works under `next dev`). Set BLOB_READ_WRITE_TOKEN " +
+        "to host it for the deployment.",
+    );
+  }
+
   // Append a per-render cache-buster to the stored URLs. Vercel Blob
   // serves with `Cache-Control: public, max-age=2592000` (30 days), and
   // re-renders write back to the same path inside `renders/<draftId>/`,
@@ -388,8 +427,8 @@ export async function renderDraft(input: RenderInput): Promise<RenderResult> {
   // tag is the cheapest fix: same blob path (idempotent storage), new
   // cache key (always-fresh fetch).
   const renderStamp = Date.now();
-  const publicVideoUrl = videoBlob?.url
-    ? appendCacheBuster(videoBlob.url, renderStamp)
+  const publicVideoUrl = videoHostedHttps
+    ? appendCacheBuster(videoBlob!.url, renderStamp)
     : `/renders/${draftId}/video.mp4?v=${renderStamp}`;
   const versionedVoiceoverUrl = publicVoiceoverUrl
     ? appendCacheBuster(publicVoiceoverUrl, renderStamp)
