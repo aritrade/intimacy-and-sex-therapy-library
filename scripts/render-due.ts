@@ -3,9 +3,15 @@
  * `.github/workflows/render-due.yml` workflow.
  *
  * Selection criteria — by default we look at:
- *   - status IN ('script_draft', 'clinician_reviewed')
+ *   - status IN any non-terminal state (script_draft, clinician_reviewed,
+ *     rendered, editor_reviewed, scheduled) — see RENDERABLE_STATUSES
  *   - video_url IS NULL
  *   - LIMIT RENDER_DUE_BATCH (default 5)
+ *
+ * The status set is intentionally broad so a draft that advanced to
+ * editor_reviewed / scheduled while its render kept failing (NULL video_url)
+ * still gets healed — the old {script_draft, clinician_reviewed}-only scan
+ * left those permanently stuck (un-publishable AND never re-rendered).
  *
  * Why we render BEFORE clinician approval: it lets the clinician see a
  * video preview alongside the script in /admin/queue, which makes their
@@ -35,6 +41,26 @@ import type { RenderInput } from "../lib/social/render";
 
 const BATCH_LIMIT = Number(process.env.RENDER_DUE_BATCH ?? "5");
 const KNOWN_STYLES = ["typography", "stock", "photo", "avatar", "long_form_essay"] as const;
+
+/**
+ * Every non-terminal status that can legitimately be missing a video and
+ * therefore needs a (re-)render. This is deliberately broader than the
+ * original {script_draft, clinician_reviewed}: a draft can reach
+ * `editor_reviewed` / `scheduled` while its render keeps failing (e.g. the
+ * Vercel Blob store was full), which leaves it approved-for-publish but with
+ * a NULL video_url — un-publishable AND invisible to the old batch scan, so
+ * it gets stuck forever. render-and-persist preserves these statuses
+ * (PRESERVE_STATUSES) so re-rendering only attaches the missing video without
+ * touching approvals or review gates. Terminal/handled-elsewhere statuses
+ * (posted, taken_down, failed) are intentionally excluded.
+ */
+const RENDERABLE_STATUSES = [
+  "script_draft",
+  "clinician_reviewed",
+  "rendered",
+  "editor_reviewed",
+  "scheduled",
+] as const;
 
 type Style = NonNullable<RenderInput["style"]>;
 
@@ -73,7 +99,7 @@ async function main() {
       .from(contentDrafts)
       .where(
         and(
-          inArray(contentDrafts.status, ["script_draft", "clinician_reviewed"]),
+          inArray(contentDrafts.status, [...RENDERABLE_STATUSES]),
           isNull(contentDrafts.videoUrl),
         ),
       )
