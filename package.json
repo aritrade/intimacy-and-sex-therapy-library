@@ -19,6 +19,8 @@
     "ingest": "tsx scripts/ingest.ts",
     "eval": "tsx scripts/eval.ts",
     "render": "tsx scripts/render-draft.ts",
+    "blob:prune": "tsx scripts/prune-render-blobs.ts",
+    "blob:prune:dry": "DRY_RUN=1 tsx scripts/prune-render-blobs.ts",
     "remotion:studio": "remotion studio video-factory/index.ts",
     "social:pull-metrics": "tsx scripts/pull-post-metrics.ts",
     "preflight": "tsx scripts/preflight.ts",

@@ -1,0 +1,79 @@
+# Daily garbage-collection of Vercel Blob render artifacts.
+#
+# Why this exists:
+#   Every render uploads `renders/<draftId>/{video.mp4,voiceover.*,narrator.png}`
+#   to Vercel Blob and nothing ever deleted them. The free Hobby tier is a hard
+#   1 GB ceiling; once full, EVERY render fails at the upload step
+#   ("Storage quota exceeded for Hobby plan (1GB maximum)") and — because
+#   lib/social/render.ts refuses to persist a non-HTTPS fallback — the draft's
+#   video_url never lands, so it re-renders forever and the whole content
+#   pipeline silently stalls. This job reclaims space from drafts whose video
+#   is already live on the platforms (or orphaned), keeping us under the cap.
+#
+# What it deletes (see lib/social/blob-prune.ts):
+#   - posted drafts older than the grace window (default 48h)
+#   - taken_down drafts (immediate)
+#   - orphaned renders/<id>/ folders with no matching draft row
+#   In-flight drafts (script_draft / clinician_reviewed / rendered /
+#   editor_reviewed / scheduled) are always kept.
+#
+# Schedule offset: daily at 03:43 UTC (away from render-due :23, publish-due
+# :07, and the daily-generate window).
+#
+# Required GH Actions secrets:
+#   - DATABASE_URL            (Neon postgres URL)
+#   - BLOB_READ_WRITE_TOKEN   (Vercel Blob, write-scoped)
+
+name: prune-blobs
+
+on:
+  schedule:
+    - cron: "43 3 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Preview only — list what WOULD be deleted without deleting"
+        required: false
+        type: boolean
+        default: false
+      grace_hours:
+        description: "Override grace window for posted drafts (hours, default 48)"
+        required: false
+        type: string
+
+concurrency:
+  group: prune-blobs
+  cancel-in-progress: false
+
+jobs:
+  prune:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install npm deps
+        run: npm ci --no-audit --no-fund
+
+      - name: Prune
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          BLOB_READ_WRITE_TOKEN: ${{ secrets.BLOB_READ_WRITE_TOKEN }}
+          DRY_RUN: ${{ inputs.dry_run == true && '1' || '' }}
+          PRUNE_GRACE_HOURS: ${{ inputs.grace_hours }}
+        run: npx tsx scripts/prune-render-blobs.ts
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "### prune-blobs summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "* trigger    : ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "* dry_run    : ${{ inputs.dry_run || 'false (scheduled = real delete)' }}" >> $GITHUB_STEP_SUMMARY
+          echo "* grace_hours: ${{ inputs.grace_hours || '(default 48)' }}" >> $GITHUB_STEP_SUMMARY
+          echo "* status     : ${{ job.status }}" >> $GITHUB_STEP_SUMMARY

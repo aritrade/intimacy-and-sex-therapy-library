@@ -94,6 +94,64 @@ export async function deleteRenderArtifact(pathname: string): Promise<void> {
   }
 }
 
+export type StoredBlob = {
+  url: string;
+  pathname: string;
+  size: number;
+  uploadedAt: Date;
+};
+
+/**
+ * List every render artifact currently in the Blob store (paginated
+ * under the `renders/` prefix). Used by the scheduled prune to reconcile
+ * stored bytes against the DB and reclaim space from already-published
+ * drafts. Throws when the token is missing — the caller (a maintenance
+ * job, never a user request) is expected to require it.
+ */
+export async function listRenderArtifacts(token?: string): Promise<StoredBlob[]> {
+  const tok = token ?? process.env.BLOB_READ_WRITE_TOKEN;
+  if (!tok) throw new Error("BLOB_READ_WRITE_TOKEN is required to list blobs");
+  const { list } = await import("@vercel/blob");
+  const out: StoredBlob[] = [];
+  let cursor: string | undefined;
+  do {
+    const page = await list({ prefix: "renders/", cursor, limit: 1000, token: tok });
+    for (const b of page.blobs) {
+      out.push({
+        url: b.url,
+        pathname: b.pathname,
+        size: b.size,
+        uploadedAt: b.uploadedAt,
+      });
+    }
+    cursor = page.cursor;
+  } while (cursor);
+  return out;
+}
+
+/**
+ * Bulk-delete blobs by URL. `del` accepts an array; we chunk to stay
+ * well under any request-size ceiling. Best-effort per chunk so one bad
+ * URL doesn't abort the whole prune. Returns the count actually deleted.
+ */
+export async function deleteBlobs(urls: string[], token?: string): Promise<number> {
+  const tok = token ?? process.env.BLOB_READ_WRITE_TOKEN;
+  if (!tok || urls.length === 0) return 0;
+  const { del } = await import("@vercel/blob");
+  const CHUNK = 100;
+  let deleted = 0;
+  for (let i = 0; i < urls.length; i += CHUNK) {
+    const batch = urls.slice(i, i + CHUNK);
+    try {
+      await del(batch, { token: tok });
+      deleted += batch.length;
+    } catch (e) {
+      console.warn("[blob-host] bulk delete chunk failed:", (e as Error).message);
+    }
+  }
+  return deleted;
+}
+
 function mimeFor(filename: string): string {
   const lower = filename.toLowerCase();
   if (lower.endsWith(".mp4")) return "video/mp4";
