@@ -28,9 +28,13 @@ export type HelpSearchInitial = {
 export function HelpSearchForm({
   mode,
   initial,
+  localEnabled = true,
 }: {
   mode: "clinician" | "community";
   initial: HelpSearchInitial;
+  /** Whether local (Google Maps) results are available. When false, the
+   *  community scope is forced to online-only since local search needs Places. */
+  localEnabled?: boolean;
 }) {
   const router = useRouter();
   const [country, setCountry] = useState(initial.country || "IN");
@@ -38,7 +42,9 @@ export function HelpSearchForm({
   const [locality, setLocality] = useState(initial.locality ?? "");
   const [specialty, setSpecialty] = useState(initial.specialty ?? SPECIALTIES[0].id);
   const [topic, setTopic] = useState(initial.topic ?? COMMUNITY_TOPICS[0].id);
-  const [scope, setScope] = useState<CommunityScope>(initial.scope ?? "both");
+  const [scope, setScope] = useState<CommunityScope>(
+    localEnabled ? initial.scope ?? "both" : "online",
+  );
   const [affirming, setAffirming] = useState<string[]>(initial.affirming ?? []);
   const [localityOptions, setLocalityOptions] = useState<string[]>([]);
 
@@ -170,9 +176,11 @@ export function HelpSearchForm({
                 className={FIELD}
                 value={scope}
                 onChange={(e) => setScope(e.target.value as CommunityScope)}
+                disabled={!localEnabled}
+                title={localEnabled ? undefined : "Local search needs Google Maps (not enabled)"}
               >
-                <option value="both">Local + online</option>
-                <option value="local">Local groups</option>
+                {localEnabled && <option value="both">Local + online</option>}
+                {localEnabled && <option value="local">Local groups</option>}
                 <option value="online">Online communities</option>
               </select>
             </label>

@@ -43,9 +43,12 @@ export default async function CliniciansPage({
     (c) => !c.name.startsWith("[VERIFY]"),
   );
 
+  // Public clinician listings come from Google Places specifically. Without it,
+  // we show only the verified directory (web search powers communities, not the
+  // clinician tier).
   const agg = aggregationConfigured();
   const aggregated =
-    submitted && specialty && agg.any
+    submitted && specialty && agg.places
       ? await searchClinicians({ country, state, locality, specialtyId: specialty, affirming })
       : null;
 
@@ -117,10 +120,14 @@ export default async function CliniciansPage({
           These are not verified by us — please check credentials before booking.
         </p>
 
-        {!agg.any ? (
+        {!agg.places ? (
           <div className="mt-4 card p-6 text-sm text-ink-600">
-            Aggregated search isn&apos;t configured yet. The verified directory above is fully
-            available.
+            Public clinician listings (Google Maps) aren&apos;t enabled yet, so this section is
+            off. The verified directory above is fully available, and the{" "}
+            <a className="underline hover:text-ink-900" href="/communities">
+              Communities
+            </a>{" "}
+            tab is live.
           </div>
         ) : !submitted || !specialty ? (
           <div className="mt-4 card p-6 text-sm text-ink-600">

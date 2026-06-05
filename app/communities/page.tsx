@@ -69,6 +69,7 @@ export default async function CommunitiesPage({
       <HelpSearchForm
         mode="community"
         initial={{ country, state, locality, topic, scope, affirming }}
+        localEnabled={agg.places}
       />
 
       <section className="mt-10">
