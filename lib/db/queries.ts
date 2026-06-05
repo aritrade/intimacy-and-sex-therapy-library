@@ -6,7 +6,7 @@
  * an empty result, so the public site renders even before DATABASE_URL is set.
  */
 
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, or, sql } from "drizzle-orm";
 import { db } from "./client";
 import {
   chunks,
@@ -246,13 +246,75 @@ export async function listFeaturedVideos(limit = 6): Promise<CatalogItem[]> {
  * for copyrighted books. Listed here so callers don't have to know that
  * distinction up-front.
  */
+// Resource kinds that belong in the Virtual Library. `report` is intentionally
+// omitted — it isn't a value in the resource_kind enum (so it can never match).
+const LIBRARY_KINDS = ["book", "guideline", "worksheet"] as const;
+
 export async function listLibraryItems(): Promise<CatalogItem[]> {
   if (!process.env.DATABASE_URL) return [];
-  const all = await listCatalog({ limit: 200 });
-  return all.filter(
-    (r) =>
-      ["book", "report", "guideline", "worksheet"].includes(r.kind) || !!r.pdfBlobUrl
-  );
+
+  // Query library items directly by kind (plus any hosted open-access PDF)
+  // rather than filtering a capped catalog page. The catalog is dominated by
+  // hundreds of articles, so a LIMIT-based approach silently dropped the
+  // handful of books/guidelines/worksheets that rank lower by publishedAt.
+  const rows = await db
+    .select({
+      id: resources.id,
+      slug: resources.slug,
+      title: resources.title,
+      authors: resources.authors,
+      language: resources.language,
+      kind: resources.kind,
+      externalUrl: resources.externalUrl,
+      pdfBlobUrl: resources.pdfBlobUrl,
+      summary: resources.summary,
+      sourceSlug: sources.slug,
+      sourceName: sources.name,
+      sourceTier: sources.trustTier,
+    })
+    .from(resources)
+    .innerJoin(sources, eq(resources.sourceId, sources.id))
+    .where(
+      and(
+        eq(resources.isPublished, true),
+        or(
+          inArray(resources.kind, LIBRARY_KINDS as unknown as never[]),
+          isNotNull(resources.pdfBlobUrl),
+        ),
+      ),
+    )
+    .orderBy(desc(resources.publishedAt))
+    .limit(300);
+
+  if (rows.length === 0) return [];
+
+  const ids = rows.map((r) => r.id);
+  const tagRows = await db
+    .select({ resourceId: resourceTags.resourceId, name: tags.name })
+    .from(resourceTags)
+    .innerJoin(tags, eq(resourceTags.tagId, tags.id))
+    .where(inArray(resourceTags.resourceId, ids));
+
+  const tagsByResource = new Map<string, string[]>();
+  for (const t of tagRows) {
+    const arr = tagsByResource.get(t.resourceId) ?? [];
+    arr.push(t.name);
+    tagsByResource.set(t.resourceId, arr);
+  }
+
+  return rows.map((r) => ({
+    id: r.id,
+    slug: r.slug,
+    title: r.title,
+    authors: (r.authors as string[]) ?? [],
+    language: r.language,
+    kind: r.kind,
+    externalUrl: r.externalUrl,
+    pdfBlobUrl: r.pdfBlobUrl,
+    summary: r.summary,
+    source: { slug: r.sourceSlug, name: r.sourceName, tier: r.sourceTier },
+    tagNames: tagsByResource.get(r.id) ?? [],
+  }));
 }
 
 /**
