@@ -7,6 +7,7 @@ import { isTopicTag, topicLabel } from "@/lib/library/collections";
 import { SaveButton } from "@/components/library/SaveButton";
 import { ReadingTracker } from "@/components/library/ReadingTracker";
 import { RelatedReading } from "@/components/library/RelatedReading";
+import { annotateGlossary } from "@/components/library/glossary-annotate";
 
 export const dynamic = "force-dynamic";
 
@@ -33,6 +34,9 @@ export default async function LibraryReaderPage({
     getRelatedResources(doc.id, 6),
   ]);
   const relatedItems = related.map(toLibItem);
+
+  // Shared across summary + body so each glossary term links only on first use.
+  const linkedTerms = new Set<string>();
 
   return (
     <div className="container-page py-6">
@@ -121,12 +125,12 @@ export default async function LibraryReaderPage({
         <article className="max-w-3xl">
           {doc.summary && (
             <p className="mb-6 border-l-2 border-accent/40 pl-4 text-base italic text-ink-600">
-              {doc.summary}
+              {annotateGlossary(doc.summary, linkedTerms)}
             </p>
           )}
           {doc.paragraphs.map((p, i) => (
             <p key={i} className="mb-4 leading-relaxed text-ink-800">
-              {p}
+              {annotateGlossary(p, linkedTerms)}
             </p>
           ))}
           <p className="mt-8 rounded-lg bg-elevated p-4 text-xs text-ink-500">
