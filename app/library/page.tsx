@@ -182,7 +182,18 @@ export default async function LibraryPage() {
             );
           })}
 
-          <LibraryBrowser items={items} />
+          <div>
+            <div className="mb-4 flex items-center justify-end">
+              <Link
+                href="/catalog"
+                className="text-sm text-accent-ink hover:underline"
+                title="Filter every resource by topic, level, population, and modality"
+              >
+                Advanced filters →
+              </Link>
+            </div>
+            <LibraryBrowser items={items} />
+          </div>
         </div>
       )}
     </div>

@@ -44,14 +44,24 @@ export default async function CatalogPage({
   return (
     <div className="container-page py-10">
       <header className="mb-8 max-w-3xl">
-        <p className="pill-accent w-fit">Catalog</p>
+        <p className="pill-accent w-fit">Catalog · Advanced filters</p>
         <h1 className="mt-3 font-serif text-3xl sm:text-4xl text-ink-900">
-          Browse curated resources
+          Filter the library precisely
         </h1>
         <p className="mt-2 text-ink-600">
-          Articles, videos, and clinical guidelines from allowlisted institutions —
-          AASECT, WPATH, WHO, NIH, peer-reviewed journals, accredited universities.
-          Tagged beginner / intermediate / advanced.
+          The power-user view of the{" "}
+          <Link href="/library" className="text-accent-ink hover:underline">
+            Library
+          </Link>
+          : filter every curated resource by topic, reading level, population, and modality.
+          Sources are allowlisted institutions — AASECT, WPATH, WHO, NIH, peer-reviewed
+          journals, accredited universities.
+        </p>
+        <p className="mt-3 text-sm text-ink-400">
+          Want to read, explore journeys, or research a topic with AI?{" "}
+          <Link href="/library" className="text-accent-ink hover:underline">
+            Go to the Library &amp; Discover hub →
+          </Link>
         </p>
       </header>
 
