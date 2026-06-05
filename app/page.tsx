@@ -6,7 +6,10 @@ import { IntakeQuiz } from "@/components/IntakeQuiz";
 import { VideoShelf } from "@/components/VideoShelf";
 import { EmailSignup } from "@/components/EmailSignup";
 import { FeedbackForm } from "@/components/FeedbackForm";
+import { SocialLinks } from "@/components/SocialLinks";
+import { TopVideos } from "@/components/TopVideos";
 import { listFeaturedVideos } from "@/lib/db/queries";
+import { topPublicVideos } from "@/lib/admin/dashboard-stats";
 import { currentStrings } from "@/lib/i18n/server";
 
 export const dynamic = "force-dynamic";
@@ -21,13 +24,17 @@ export default async function HomePage() {
     return <Welcome />;
   }
 
-  const featuredVideos = await listFeaturedVideos(6);
+  const [featuredVideos, topVideos] = await Promise.all([
+    listFeaturedVideos(6),
+    topPublicVideos(6),
+  ]);
 
   return (
     <>
       <Hero hasVideos={featuredVideos.length > 0} />
       <IntakeQuiz />
       <VideoShelf items={featuredVideos} />
+      <TopVideos videos={topVideos} />
       <ContinueReadingShelf />
       <Surfaces />
       <Topics />
@@ -122,6 +129,7 @@ function Hero({ hasVideos }: { hasVideos: boolean }) {
                 <span aria-hidden>⚐</span> India-first crisis routing
               </li>
             </ul>
+            <SocialLinks className="mt-6" />
           </div>
 
           <aside className="animate-fade-up lg:pt-2 space-y-4" aria-label="Newsletter signup and feedback">

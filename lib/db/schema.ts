@@ -16,13 +16,13 @@ import {
 } from "drizzle-orm/pg-core";
 
 /**
- * pgvector custom type. We pin to 1536 to match OpenAI text-embedding-3-small.
- * If we switch embedding models we'll add a second table rather than mutate
- * an existing one in place.
+ * pgvector custom type. Pinned to 768 to match Gemini `gemini-embedding-001`
+ * with outputDimensionality=768 (see lib/ai/embeddings.ts). Migrated from the
+ * original OpenAI 1536 dims in drizzle/0005_vector_768.sql.
  */
 const vector = customType<{ data: number[]; driverData: string }>({
   dataType() {
-    return "vector(1536)";
+    return "vector(768)";
   },
   toDriver(value: number[]) {
     return `[${value.join(",")}]`;
@@ -591,6 +591,23 @@ export const contentDrafts = pgTable("content_drafts", {
       }>
     >()
     .default(sql`'[]'::jsonb`),
+  /**
+   * RAG grounding metadata captured at generation time. Null when the draft
+   * predates grounding. `lowGrounding=true` means generation fell back to the
+   * ungrounded path (no evidence retrieved) and needs closer clinician review.
+   */
+  grounding: jsonb("grounding").$type<{
+    chunkIds: string[];
+    sources: Array<{ title: string; url: string; year: number | null }>;
+    score: number;
+    lowGrounding: boolean;
+  } | null>(),
+  /**
+   * Soft-archive stamp for settled posted/taken-down drafts. Status is left
+   * unchanged so the metrics poller keeps working; the admin list just hides
+   * archived rows by default.
+   */
+  archivedAt: timestamp("archived_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
@@ -921,5 +938,59 @@ export const channelMetrics = pgTable(
       t.platform,
       t.pulledAt,
     ),
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// Owned newsletter list (replaces Buttondown). Double opt-in: a row is created
+// 'pending' on signup and flips to 'confirmed' only after the subscriber
+// clicks the confirmation link. The email lives here (source of truth);
+// confirm/unsub tokens back the one-click links.
+// ---------------------------------------------------------------------------
+
+export const emailSubscribers = pgTable(
+  "email_subscribers",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    email: varchar("email", { length: 320 }).notNull().unique(),
+    status: varchar("status", { length: 16 }).notNull().default("pending"), // pending | confirmed | unsubscribed
+    confirmToken: varchar("confirm_token", { length: 64 }).notNull(),
+    unsubToken: varchar("unsub_token", { length: 64 }).notNull(),
+    locale: varchar("locale", { length: 8 }),
+    tags: jsonb("tags").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    confirmedAt: timestamp("confirmed_at", { withTimezone: true }),
+    unsubscribedAt: timestamp("unsubscribed_at", { withTimezone: true }),
+  },
+  (t) => ({
+    byStatus: index("email_subscribers_status_idx").on(t.status),
+    byConfirmToken: index("email_subscribers_confirm_token_idx").on(t.confirmToken),
+    byUnsubToken: index("email_subscribers_unsub_token_idx").on(t.unsubToken),
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// In-app web traffic log. Privacy-first: no IP, no user id. Geo granularity is
+// country/region/city from Vercel edge headers. One sampled row per page view;
+// the admin analytics page aggregates country / top pages / referrers.
+// ---------------------------------------------------------------------------
+
+export const pageViews = pgTable(
+  "page_views",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    ts: timestamp("ts", { withTimezone: true }).defaultNow().notNull(),
+    path: text("path").notNull(),
+    referrerHost: text("referrer_host"),
+    country: varchar("country", { length: 2 }),
+    region: varchar("region", { length: 8 }),
+    city: text("city"),
+    deviceType: varchar("device_type", { length: 12 }),
+    isBot: boolean("is_bot").notNull().default(false),
+  },
+  (t) => ({
+    byTs: index("page_views_ts_idx").on(t.ts),
+    byCountry: index("page_views_country_idx").on(t.country),
+    byPath: index("page_views_path_idx").on(t.path),
   }),
 );

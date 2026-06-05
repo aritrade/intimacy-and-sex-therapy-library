@@ -306,7 +306,7 @@ export default async function AdminHome() {
           <Link href="/admin/subscribers" className="card card-hover p-5 block">
             <h3 className="font-serif text-base text-ink-900">Subscribers</h3>
             <p className="mt-2 text-sm text-ink-600">
-              Newsletter growth chart + Buttondown live list + CSV export.
+              Owned newsletter list — confirmations chart, live list, CSV export.
             </p>
           </Link>
           <Link href="/admin/proposals" className="card card-hover p-5 block">

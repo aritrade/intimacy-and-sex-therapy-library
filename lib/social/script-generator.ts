@@ -30,6 +30,8 @@ import {
   type ScriptStyleId,
 } from "@/lib/brand/playbook";
 import { critiqueAndMaybeRewrite } from "@/lib/social/script-critique";
+import { formatEvidenceBlock } from "@/lib/social/grounding";
+import type { RetrievedChunk } from "@/lib/search/hybrid";
 
 export type ScriptStyle =
   /** 9:16 typography reel — original mood-only template. */
@@ -143,6 +145,16 @@ export type ScriptInput = {
   style?: ScriptStyle;
   resource?: { title: string; authors?: string[]; year?: number; sourceName: string; url: string };
   /**
+   * Optional: retrieved corpus evidence used to ground the script. When
+   * present, the generator injects an EVIDENCE block and instructs the LLM
+   * to make only evidence-supported claims. `citation` is the suggested
+   * on-screen line derived from the top source.
+   */
+  evidence?: {
+    chunks: RetrievedChunk[];
+    citation: string | null;
+  };
+  /**
    * Optional: reviewer feedback that the LLM must address. Used by the
    * "Apply notes & rewrite" action — the previous script (which the
    * reviewer rejected) is passed in along with each accumulated note
@@ -170,7 +182,7 @@ export class ScriptRefusal extends Error {
 const STYLE_GUIDANCE: Record<ScriptStyle, string> = {
   typography: `Style: 9:16 typography reel. Each scene's "text" appears on screen AND is voiced over. Keep each scene under ~12 spoken words per second of screen time. Build 3–6 scenes that sum to roughly the target duration.`,
 
-  stock: `Style: 9:16 stock-footage reel. Each scene's "text" is a single short sentence (≤14 words) overlaid on a B-roll clip. Lead each scene with a concrete, evocative image — the keyword extractor needs at least one strong noun per scene to find good footage (e.g. "morning light through curtains", "two cups of tea", "rain on window"). Build 3–6 scenes.`,
+  stock: `Style: 9:16 stock-footage reel. Each scene's "text" is a single short sentence (≤14 words) overlaid on a B-roll clip. Lead each scene with a concrete, evocative image so the keyword extractor has at least one strong noun per scene to find good footage. Derive that imagery from THIS brief's subject and the EVIDENCE — never reuse stock phrases from any example or template. Build 3–6 scenes.`,
 
   carousel: `Style: square carousel post (5–10 slides). Each "scene" is one slide. Slides are READ — not voiced. Make each slide stand alone: a complete thought in 1–2 sentences, max ~28 words. Slide 1 (hook) sets up the question. Final slide (cta) tells the reader what to do next. Use "seconds: 2" for every slide; the renderer ignores duration for carousels.`,
 
@@ -243,6 +255,14 @@ export async function generateScript(input: ScriptInput): Promise<GeneratedScrip
     ? `\nCITED SOURCE (you MUST cite it on screen):\n  Title: ${input.resource.title}\n  Authors: ${(input.resource.authors ?? []).slice(0, 3).join(", ") || "—"}\n  Source: ${input.resource.sourceName}${input.resource.year ? `, ${input.resource.year}` : ""}\n  URL: ${input.resource.url}\n`
     : "\nNo source supplied. Use only the most consensus-evidenced claims; if uncertain, return a refusal-style hook instead.";
 
+  // Grounding evidence retrieved from the validated corpus. When present, the
+  // LLM is constrained to claims the evidence supports.
+  const evidenceChunks = input.evidence?.chunks ?? [];
+  const evidenceBlock =
+    evidenceChunks.length > 0
+      ? `\nEVIDENCE (retrieved from our clinician-reviewed corpus — ground every factual claim in these passages; cite by author/source, never invent studies or numbers):\n${formatEvidenceBlock(evidenceChunks)}\n`
+      : "";
+
   const targetSeconds = input.durationSeconds;
   const budget = longFormWordBudget(targetSeconds);
 
@@ -270,9 +290,14 @@ HARD CONSTRAINTS
 REFUSAL — return a hook that explains why you're declining if the brief asks for any of these:
 ${refusalList}
 
+GROUNDING RULE
+${evidenceChunks.length > 0
+  ? "An EVIDENCE block is provided below. Every factual or clinical claim MUST be supported by that evidence. Do NOT invent statistics, study names, or findings beyond it. Derive on-screen imagery from the brief and the evidence — never copy wording from any style example."
+  : "No retrieved evidence is available. Stick to broadly consensus-evidenced, non-numeric claims; never fabricate a study, statistic, or citation."}
+
 CITATION RULE
-${input.resource
-  ? "Include a 1-line on-screen citation (citationLine field) referencing the supplied source."
+${input.resource || input.evidence?.citation
+  ? "Include a 1-line on-screen citation (citationLine field) referencing the supplied source / evidence."
   : "If you cannot ground a factual claim, return a soft, non-claim-making hook (e.g., 'A reminder, not a remedy:')."}
 ${playbookPrompt({ style: style as ScriptStyleId })}`;
 
@@ -299,7 +324,7 @@ When rewriting:
   - Never repeat a phrase from the previous attempt that a reviewer note specifically called out.`
     : "";
 
-  const prompt = `BRIEF:\n${input.brief}\n${sourceHint}${feedbackBlock}\nReturn JSON matching the schema. Keep all language clear, warm, and judgment-free.`;
+  const prompt = `BRIEF:\n${input.brief}\n${sourceHint}${evidenceBlock}${feedbackBlock}\nReturn JSON matching the schema. Keep all language clear, warm, and judgment-free.`;
 
   // First attempt.
   let object = (
@@ -385,8 +410,13 @@ The previous attempt totalled ${wordsFirst} words across all chapters, which is 
     }
   }
 
+  // Derive an on-screen citation from the top retrieved source when the
+  // model didn't already produce one (soft grounding fallback).
+  const citationLine = object.citationLine ?? input.evidence?.citation ?? null;
+
   return truncateScript({
     ...object,
+    citationLine,
     hashtags: normaliseHashtags(object.hashtags),
     durationSeconds: targetSeconds,
   });

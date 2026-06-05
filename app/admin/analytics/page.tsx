@@ -5,7 +5,11 @@ import {
   Sparkline,
 } from "@/components/admin/charts/Charts";
 import { requireAdminAreaPage } from "@/lib/auth/admin-page-guard";
-import { channelSnapshotView, engagementSnapshot } from "@/lib/admin/dashboard-stats";
+import {
+  channelSnapshotView,
+  engagementSnapshot,
+  trafficView,
+} from "@/lib/admin/dashboard-stats";
 
 export const metadata = { title: "Analytics · Admin" };
 export const dynamic = "force-dynamic";
@@ -20,10 +24,16 @@ export default async function AdminAnalytics() {
   const guard = await requireAdminAreaPage();
   if (guard) return guard;
 
-  const [engagement, channels] = await Promise.all([
+  const [engagement, channels, traffic] = await Promise.all([
     engagementSnapshot(30),
     channelSnapshotView(90),
+    trafficView(30),
   ]);
+
+  const countryBarData = traffic.topCountries.map((c) => ({
+    x: c.country.toUpperCase(),
+    Visits: c.n,
+  }));
 
   const vercelProject = process.env.VERCEL_PROJECT_NAME || "intimacy-and-sex-therapy-library";
 
@@ -212,6 +222,83 @@ export default async function AdminAnalytics() {
         )}
       </section>
 
+      {/* IN-APP SITE TRAFFIC (page_views) */}
+      <section className="mt-10">
+        <header className="mb-4">
+          <h2 className="font-serif text-2xl text-ink-900">Site traffic (in-app)</h2>
+          <p className="mt-1 text-sm text-ink-600">
+            First-party page views from the last {traffic.windowDays} days, logged
+            by <code>/api/track</code> using Vercel edge geo headers. No IP, no
+            cookies, no PII — bots excluded.
+          </p>
+        </header>
+
+        {traffic.totalVisits === 0 ? (
+          <div className="card p-5 text-sm text-ink-600">
+            No visits logged yet. Data appears here once real (non-bot) traffic
+            hits the site after this deploy.
+          </div>
+        ) : (
+          <>
+            <div className="grid gap-3 sm:grid-cols-4">
+              <Counter label="Visits" value={traffic.totalVisits} />
+              {traffic.devices.slice(0, 3).map((d, i) => (
+                <Counter
+                  key={d.device}
+                  label={d.device}
+                  value={d.n}
+                  accent={(["teal", "plum", "coral"] as const)[i]}
+                />
+              ))}
+            </div>
+
+            <div className="mt-4 card p-5">
+              <h3 className="font-serif text-lg text-ink-900">Visits per day</h3>
+              <div className="mt-4">
+                <AreaChartCard
+                  data={traffic.perDay}
+                  series={[{ key: "visits", label: "Visits" }]}
+                  height={220}
+                />
+              </div>
+            </div>
+
+            <div className="mt-4 grid gap-4 lg:grid-cols-2">
+              <div className="card p-5">
+                <h3 className="font-serif text-lg text-ink-900">Top countries</h3>
+                {countryBarData.length > 0 ? (
+                  <div className="mt-4">
+                    <BarChartCard
+                      data={countryBarData}
+                      series={[{ key: "Visits", label: "Visits" }]}
+                      height={240}
+                    />
+                  </div>
+                ) : (
+                  <p className="mt-3 text-sm text-ink-400">No country data yet.</p>
+                )}
+              </div>
+
+              <div className="card p-5">
+                <h3 className="font-serif text-lg text-ink-900">Top pages</h3>
+                <RankTable
+                  rows={traffic.topPages.map((p) => ({ label: p.path, n: p.n }))}
+                  emptyLabel="No page data yet."
+                />
+              </div>
+            </div>
+
+            <div className="mt-4 card p-5">
+              <h3 className="font-serif text-lg text-ink-900">Top referrers</h3>
+              <RankTable
+                rows={traffic.topReferrers.map((r) => ({ label: r.host, n: r.n }))}
+                emptyLabel="No external referrers yet (direct/in-app traffic only)."
+              />
+            </div>
+          </>
+        )}
+      </section>
+
       {/* VERCEL ANALYTICS LINK CARD */}
       <section className="mt-8 card p-5 border border-accent/30 bg-accent/5">
         <div className="flex items-start gap-3 flex-wrap">
@@ -261,6 +348,39 @@ function Counter({
         {value.toLocaleString()}
       </p>
     </div>
+  );
+}
+
+function RankTable({
+  rows,
+  emptyLabel,
+}: {
+  rows: Array<{ label: string; n: number }>;
+  emptyLabel: string;
+}) {
+  if (rows.length === 0) {
+    return <p className="mt-3 text-sm text-ink-400">{emptyLabel}</p>;
+  }
+  const max = Math.max(...rows.map((r) => r.n), 1);
+  return (
+    <ul className="mt-3 space-y-1.5">
+      {rows.map((r) => (
+        <li key={r.label} className="flex items-center gap-3 text-sm">
+          <span className="truncate text-ink-700 flex-1" title={r.label}>
+            {r.label}
+          </span>
+          <span className="relative h-2 w-24 rounded-full bg-border/60 overflow-hidden" aria-hidden>
+            <span
+              className="absolute inset-y-0 left-0 rounded-full bg-accent"
+              style={{ width: `${Math.round((r.n / max) * 100)}%` }}
+            />
+          </span>
+          <span className="w-12 text-right tabular-nums text-ink-900">
+            {r.n.toLocaleString()}
+          </span>
+        </li>
+      ))}
+    </ul>
   );
 }
 

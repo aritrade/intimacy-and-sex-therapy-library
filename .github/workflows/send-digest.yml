@@ -1,0 +1,78 @@
+# Weekly newsletter digest to the owned, confirmed subscriber list.
+#
+# Why this exists:
+#   We own the list in Neon (email_subscribers) and send via Amazon SES.
+#   This job builds a digest of the past week's newly published resources +
+#   currently top-performing videos and mails every confirmed subscriber,
+#   each with their own one-click unsubscribe link. If there's no fresh
+#   content, the send is skipped.
+#
+# Schedule: Mondays 13:30 UTC (~9:30 AM ET / 7:00 PM IST) — a reasonable
+#   open-rate window without colliding with the daily crons.
+#
+# Required GH Actions secrets:
+#   - DATABASE_URL          (Neon postgres URL)
+#   - AWS_REGION            (SES region, e.g. us-east-1)
+#   - AWS_ACCESS_KEY_ID     (IAM user with ses:SendEmail)
+#   - AWS_SECRET_ACCESS_KEY
+#   - SES_FROM              (verified From identity, e.g. "Name <you@example.com>")
+#   - NEXT_PUBLIC_SITE_URL  (public base URL for links; optional, falls back to brand URL)
+
+name: send-digest
+
+on:
+  schedule:
+    - cron: "30 13 * * 1"
+  workflow_dispatch:
+    inputs:
+      days:
+        description: "Include resources published in the last N days (default 7)"
+        required: false
+        type: string
+      dry_run:
+        description: "Build + count recipients without sending"
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: send-digest
+  cancel-in-progress: false
+
+jobs:
+  digest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install npm deps
+        run: npm ci --no-audit --no-fund
+
+      - name: Send weekly digest
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          SES_FROM: ${{ secrets.SES_FROM }}
+          NEXT_PUBLIC_SITE_URL: ${{ secrets.NEXT_PUBLIC_SITE_URL }}
+        run: |
+          npx tsx scripts/send-digest.ts \
+            ${{ inputs.days && format('-- --days={0}', inputs.days) || '' }} \
+            ${{ inputs.dry_run && '-- --dry-run' || '' }}
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "### send-digest summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "* trigger : ${{ github.event_name }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "* days    : ${{ inputs.days || '(default 7)' }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "* dry_run : ${{ inputs.dry_run || 'false' }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "* status  : ${{ job.status }}" >> "$GITHUB_STEP_SUMMARY"

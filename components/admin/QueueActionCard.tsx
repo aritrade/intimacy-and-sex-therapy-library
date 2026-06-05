@@ -4,6 +4,12 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+type Grounding = {
+  sources: Array<{ title: string; url: string; year: number | null }>;
+  score: number;
+  lowGrounding: boolean;
+} | null;
+
 type Draft = {
   id: string;
   kind: string;
@@ -13,6 +19,7 @@ type Draft = {
   videoUrl: string | null;
   captionsSrt: string | null;
   scriptMd: string | null;
+  grounding?: Grounding;
   createdAt: string;
 };
 
@@ -187,6 +194,8 @@ export function QueueActionCard({ lane, draft }: { lane: string; draft: Draft })
         {draft.brief}
       </p>
 
+      <GroundingBadge grounding={draft.grounding} />
+
       {draft.videoUrl && (
         <div className="space-y-1.5">
           <video
@@ -256,6 +265,54 @@ export function QueueActionCard({ lane, draft }: { lane: string; draft: Draft })
         <p role="alert" className="text-[11px] text-warn">
           {error}
         </p>
+      )}
+    </div>
+  );
+}
+
+function GroundingBadge({ grounding }: { grounding?: Grounding }) {
+  if (grounding === undefined) return null;
+  // null = draft predates grounding; show a neutral note.
+  if (grounding === null) {
+    return (
+      <p className="text-[10px] text-ink-400">No grounding data (pre-RAG draft)</p>
+    );
+  }
+  const sources = grounding.sources ?? [];
+  return (
+    <div className="space-y-1">
+      {grounding.lowGrounding ? (
+        <span
+          className="pill-coral text-[10px]"
+          title="No strong corpus evidence was retrieved — verify every claim before approving."
+        >
+          ⚠ Low grounding — verify claims
+        </span>
+      ) : (
+        <span
+          className="pill-teal text-[10px]"
+          title={`Grounded in ${sources.length} source${sources.length === 1 ? "" : "s"} (score ${grounding.score}).`}
+        >
+          ✓ Grounded · {sources.length} source{sources.length === 1 ? "" : "s"}
+        </span>
+      )}
+      {sources.length > 0 && (
+        <ul className="text-[10px] text-ink-500 space-y-0.5">
+          {sources.slice(0, 3).map((s, i) => (
+            <li key={`${s.url}-${i}`} className="truncate">
+              <a
+                href={s.url}
+                target="_blank"
+                rel="noreferrer"
+                className="underline hover:text-ink-900"
+                title={s.title}
+              >
+                {s.title}
+                {s.year ? ` (${s.year})` : ""}
+              </a>
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   );

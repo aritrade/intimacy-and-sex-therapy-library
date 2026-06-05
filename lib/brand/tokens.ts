@@ -68,6 +68,46 @@ export const BRAND_COPY = {
   ageGate: "18+ · educational",
 } as const;
 
+/**
+ * Public social profiles for the brand. Sourced from NEXT_PUBLIC_* env so the
+ * exact URLs live in one place (Vercel env + .env) rather than hardcoded, and
+ * are available to both server and client components. Any entry left blank is
+ * simply not rendered — `brandSocialLinks()` returns only configured links.
+ */
+export const BRAND_SOCIAL = {
+  facebook: process.env.NEXT_PUBLIC_FACEBOOK_URL ?? "",
+  linkedin: process.env.NEXT_PUBLIC_LINKEDIN_URL ?? "",
+  youtube: process.env.NEXT_PUBLIC_YOUTUBE_URL ?? "",
+  instagram: process.env.NEXT_PUBLIC_INSTAGRAM_URL ?? "",
+} as const;
+
+export type BrandSocialPlatform = keyof typeof BRAND_SOCIAL;
+
+export type BrandSocialLink = {
+  platform: BrandSocialPlatform;
+  label: string;
+  url: string;
+};
+
+const SOCIAL_LABELS: Record<BrandSocialPlatform, string> = {
+  facebook: "Facebook",
+  linkedin: "LinkedIn",
+  youtube: "YouTube",
+  instagram: "Instagram",
+};
+
+/** Configured (non-empty, http) social links, in a stable display order. */
+export function brandSocialLinks(): BrandSocialLink[] {
+  const order: BrandSocialPlatform[] = ["youtube", "facebook", "linkedin", "instagram"];
+  return order
+    .map((platform) => ({
+      platform,
+      label: SOCIAL_LABELS[platform],
+      url: BRAND_SOCIAL[platform],
+    }))
+    .filter((l) => /^https?:\/\//.test(l.url));
+}
+
 /** Convenience: gradient stops used in nav logo + reel watermarks. */
 export const BRAND_GRADIENT_STOPS = [
   BRAND_HEX.plum_light,

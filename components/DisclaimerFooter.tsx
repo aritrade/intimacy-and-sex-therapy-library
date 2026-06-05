@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { DISCLAIMERS } from "@/lib/safety/disclaimers";
+import { SocialLinks } from "@/components/SocialLinks";
 
 export function DisclaimerFooter() {
   return (
@@ -17,6 +18,7 @@ export function DisclaimerFooter() {
           </div>
           <p className="max-w-prose">{DISCLAIMERS.educational}</p>
           <p className="max-w-prose mt-3 text-ink-400 text-xs">{DISCLAIMERS.copyright}</p>
+          <SocialLinks className="mt-4" />
         </section>
         <section aria-labelledby="footer-explore">
           <h2 id="footer-explore" className="font-medium text-ink-900 mb-2">

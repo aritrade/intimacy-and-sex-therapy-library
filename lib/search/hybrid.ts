@@ -5,7 +5,7 @@
  * page or timestamp metadata so the chatbot can deep-link.
  *
  * Falls back gracefully when DATABASE_URL is unset (returns []).
- * Vector search is skipped when OPENAI_API_KEY is unset; we still get BM25.
+ * Vector search is skipped when GEMINI_API_KEY is unset; we still get BM25.
  */
 
 import { and, eq, inArray, sql } from "drizzle-orm";
@@ -109,7 +109,7 @@ async function vectorSearch(
   k: number,
   scope?: string,
 ): Promise<Ranked[]> {
-  const embed = await embedBatch([q]);
+  const embed = await embedBatch([q], "RETRIEVAL_QUERY");
   if (!embed || embed.embeddings.length === 0) return [];
   const vec = `[${embed.embeddings[0].join(",")}]`;
 

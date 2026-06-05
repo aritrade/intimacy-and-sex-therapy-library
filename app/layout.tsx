@@ -6,6 +6,7 @@ import { NavBar } from "@/components/NavBar";
 import { CrisisFab } from "@/components/CrisisFab";
 import { Analytics } from "@/components/Analytics";
 import { Analytics as VercelAnalytics } from "@vercel/analytics/react";
+import { VisitTracker } from "@/components/VisitTracker";
 import { PWARegister } from "@/components/PWARegister";
 import { AuthMenu } from "@/components/AuthMenu";
 
@@ -79,6 +80,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             (free tier). Plausible above continues to handle custom
             client-side trackEvent() calls. */}
         <VercelAnalytics />
+        {/* In-app visit log (page_views) — country/device/referrer surfaced
+            on /admin/analytics, independent of the external Vercel dashboard. */}
+        <VisitTracker />
         <PWARegister />
       </body>
     </html>

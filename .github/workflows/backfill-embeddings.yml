@@ -1,0 +1,53 @@
+# Self-resuming embedding backfill for RAG grounding.
+#
+# Why this exists:
+#   The corpus (chunks) is embedded with Gemini gemini-embedding-001. The free
+#   tier has a DAILY quota, so a one-shot backfill of a large corpus stops part
+#   way with a 429 "exceeded your current quota". scripts/backfill-embeddings.ts
+#   only touches rows where embedding IS NULL and commits per row, so it's fully
+#   idempotent and resumable. This job runs once a day and chips away at the
+#   remaining NULL chunks until the corpus is fully embedded, then becomes a
+#   no-op ("Found 0 chunk(s) needing embeddings").
+#
+# Schedule: 09:00 UTC daily — shortly after Google's free-tier quota reset
+#   (~midnight US Pacific) so each run gets a fresh daily allowance.
+#
+# Required GH Actions secrets:
+#   - DATABASE_URL    (Neon postgres URL)
+#   - GEMINI_API_KEY  (Gemini embeddings key)
+
+name: backfill-embeddings
+
+on:
+  schedule:
+    - cron: "0 9 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: backfill-embeddings
+  cancel-in-progress: false
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install npm deps
+        run: npm ci --no-audit --no-fund
+
+      # The script prints per-batch progress and a final {embedded, failed}
+      # tally. It exits 0 even when it stops early on the daily quota, so the
+      # job stays green and simply resumes tomorrow. Becomes a no-op once the
+      # corpus is fully embedded ("Found 0 chunk(s) needing embeddings").
+      - name: Backfill embeddings (resumes where the last run stopped)
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: npm run backfill:embeddings

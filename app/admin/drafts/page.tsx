@@ -1,9 +1,9 @@
 import Link from "next/link";
-import { desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, isNotNull } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { contentDrafts } from "@/lib/db/schema";
 import { DraftCreateForm } from "@/components/admin/DraftCreateForm";
-import { draftStateCounts } from "@/lib/admin/stats";
+import { draftStateCounts, archivedDraftCount } from "@/lib/admin/stats";
 import { requireAdminPage } from "@/lib/auth/admin-page-guard";
 
 export const metadata = { title: "Drafts · Admin" };
@@ -55,14 +55,27 @@ export default async function DraftsList({
     );
   }
 
-  const filter = isStatus(searchParams?.status) ? (searchParams!.status as DraftStatus) : null;
-  const counts = await draftStateCounts();
+  const rawStatus = searchParams?.status;
+  const archivedView = rawStatus === "archived";
+  const filter = isStatus(rawStatus) ? (rawStatus as DraftStatus) : null;
+  const [counts, archivedCount] = await Promise.all([
+    draftStateCounts(),
+    archivedDraftCount(),
+  ]);
   const total = Object.values(counts).reduce((a, b) => a + b, 0);
+
+  // Archived drafts are hidden from the default + per-status views; only the
+  // dedicated "archived" filter surfaces them.
+  const whereClause = archivedView
+    ? isNotNull(contentDrafts.archivedAt)
+    : filter
+      ? and(eq(contentDrafts.status, filter), isNull(contentDrafts.archivedAt))
+      : isNull(contentDrafts.archivedAt);
 
   const drafts = await db
     .select()
     .from(contentDrafts)
-    .where(filter ? eq(contentDrafts.status, filter) : sql`true`)
+    .where(whereClause)
     .orderBy(desc(contentDrafts.createdAt))
     .limit(50);
 
@@ -79,7 +92,7 @@ export default async function DraftsList({
       <DraftCreateForm />
 
       <nav className="mt-10 mb-3 flex items-center gap-2 flex-wrap" aria-label="Filter drafts by status">
-        <FilterChip href="/admin/drafts" label={`All (${total})`} active={!filter} />
+        <FilterChip href="/admin/drafts" label={`All (${total})`} active={!filter && !archivedView} />
         {KNOWN_STATUSES.map((s) => (
           <FilterChip
             key={s}
@@ -89,16 +102,28 @@ export default async function DraftsList({
             pillClass={STATUS_PILL[s] ?? "pill"}
           />
         ))}
+        <FilterChip
+          href="/admin/drafts?status=archived"
+          label={`archived (${archivedCount})`}
+          active={archivedView}
+          pillClass="pill"
+        />
       </nav>
 
       <h2 className="font-serif text-xl text-ink-900 mb-3">
-        {filter ? `${filter.replaceAll("_", " ")} drafts` : "Recent drafts"}
+        {archivedView
+          ? "Archived drafts"
+          : filter
+            ? `${filter.replaceAll("_", " ")} drafts`
+            : "Recent drafts"}
       </h2>
       {drafts.length === 0 ? (
         <div className="card p-6 text-sm text-ink-600">
-          {filter
-            ? `No drafts in ${filter.replaceAll("_", " ")}.`
-            : "No drafts yet. Use the form above to generate one."}
+          {archivedView
+            ? "No archived drafts."
+            : filter
+              ? `No drafts in ${filter.replaceAll("_", " ")}.`
+              : "No drafts yet. Use the form above to generate one."}
         </div>
       ) : (
         <ul className="space-y-3">

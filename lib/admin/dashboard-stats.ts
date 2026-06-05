@@ -2,7 +2,7 @@
  * Data helpers for the new /admin dashboards:
  *   - /admin/analytics   engagement + channel growth + per-post sparklines
  *   - /admin/feedback    submissions + per-day chart + per-category donut
- *   - /admin/subscribers Buttondown list + audit-log growth chart
+ *   - /admin/subscribers owned Neon list + confirmations growth chart
  *
  * Every helper here:
  *   - Returns an empty shape when DATABASE_URL / required env is missing
@@ -231,6 +231,62 @@ export async function engagementSnapshot(windowDays = 30): Promise<EngagementSna
 }
 
 /* ────────────────────────────────────────────────────────────────────
+ * PUBLIC TOP VIDEOS (for the landing page)
+ *
+ * Posted drafts that have a YouTube video id, ranked by latest views (then
+ * recency). Used to render click-to-play previews on the public homepage.
+ * Fails closed to [] so the landing page never breaks.
+ * ────────────────────────────────────────────────────────────────── */
+
+export type TopPublicVideo = {
+  draftId: string;
+  youtubeId: string;
+  title: string;
+  views: number;
+  postedAt: Date | null;
+};
+
+export async function topPublicVideos(limit = 3): Promise<TopPublicVideo[]> {
+  if (!process.env.DATABASE_URL) return [];
+  try {
+    const rows = (await db.execute(sql`
+      select
+        d.id as draft_id,
+        d.brief,
+        d.platform_post_ids->>'youtube' as youtube_id,
+        d.posted_at,
+        coalesce(max(pm.views), 0)::int as views
+      from content_drafts d
+      left join post_metrics pm
+        on pm.draft_id = d.id and pm.platform = 'youtube'
+      where d.status = 'posted'
+        and d.archived_at is null
+        and d.platform_post_ids->>'youtube' is not null
+        and d.platform_post_ids->>'youtube' <> ''
+      group by d.id
+      order by views desc, d.posted_at desc nulls last
+      limit ${limit}
+    `)) as unknown as Array<{
+      draft_id: string;
+      brief: string;
+      youtube_id: string;
+      posted_at: Date | null;
+      views: number;
+    }>;
+
+    return rows.map((r) => ({
+      draftId: r.draft_id,
+      youtubeId: r.youtube_id,
+      title: r.brief.replace(/\s+/g, " ").trim().slice(0, 90),
+      views: Number(r.views),
+      postedAt: r.posted_at,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+/* ────────────────────────────────────────────────────────────────────
  * CHANNEL FOLLOWERS (latest snapshot + growth time series)
  * ────────────────────────────────────────────────────────────────── */
 
@@ -303,6 +359,99 @@ export async function channelSnapshotView(windowDays = 90): Promise<ChannelSnaps
     })),
     followersOverTime: Array.from(buckets.values()),
   };
+}
+
+/* ────────────────────────────────────────────────────────────────────
+ * IN-APP WEB TRAFFIC (page_views — country / pages / referrers)
+ *
+ * Aggregates the privacy-first page_views log written by /api/track. Bots
+ * are excluded. No PII is read (no IP / no user id exist in the table).
+ * ────────────────────────────────────────────────────────────────── */
+
+export type TrafficView = {
+  configured: boolean;
+  windowDays: number;
+  totalVisits: number;
+  perDay: ChartPoint[];
+  topCountries: Array<{ country: string; n: number }>;
+  topPages: Array<{ path: string; n: number }>;
+  topReferrers: Array<{ host: string; n: number }>;
+  devices: Array<{ device: string; n: number }>;
+};
+
+export async function trafficView(windowDays = 30): Promise<TrafficView> {
+  const empty: TrafficView = {
+    configured: false,
+    windowDays,
+    totalVisits: 0,
+    perDay: [],
+    topCountries: [],
+    topPages: [],
+    topReferrers: [],
+    devices: [],
+  };
+  if (!process.env.DATABASE_URL) return empty;
+  try {
+    const since = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000);
+    const sinceParam = tsParam(since);
+    const notBot = sql`is_bot = false and ts >= ${sinceParam}`;
+
+    const [totalRow] = (await db.execute(sql`
+      select count(*)::int as n from page_views where ${notBot}
+    `)) as unknown as Array<{ n: number }>;
+
+    const perDayRows = (await db.execute(sql`
+      select to_char(ts, 'YYYY-MM-DD') as day, count(*)::int as n
+        from page_views where ${notBot}
+       group by day order by day
+    `)) as unknown as Array<{ day: string; n: number }>;
+    const buckets = emptyDayBuckets(windowDays);
+    for (const r of perDayRows) {
+      const point = buckets.get(r.day);
+      if (point) point.visits = Number(r.n);
+    }
+    for (const point of buckets.values()) {
+      if (point.visits === undefined) point.visits = 0;
+    }
+
+    const topCountries = (await db.execute(sql`
+      select coalesce(country, '??') as country, count(*)::int as n
+        from page_views where ${notBot}
+       group by country order by n desc limit 12
+    `)) as unknown as Array<{ country: string; n: number }>;
+
+    const topPages = (await db.execute(sql`
+      select path, count(*)::int as n
+        from page_views where ${notBot}
+       group by path order by n desc limit 12
+    `)) as unknown as Array<{ path: string; n: number }>;
+
+    const topReferrers = (await db.execute(sql`
+      select referrer_host as host, count(*)::int as n
+        from page_views
+       where ${notBot} and referrer_host is not null
+       group by referrer_host order by n desc limit 12
+    `)) as unknown as Array<{ host: string; n: number }>;
+
+    const devices = (await db.execute(sql`
+      select coalesce(device_type, 'unknown') as device, count(*)::int as n
+        from page_views where ${notBot}
+       group by device_type order by n desc
+    `)) as unknown as Array<{ device: string; n: number }>;
+
+    return {
+      configured: true,
+      windowDays,
+      totalVisits: Number(totalRow?.n ?? 0),
+      perDay: Array.from(buckets.values()),
+      topCountries: topCountries.map((r) => ({ country: String(r.country), n: Number(r.n) })),
+      topPages: topPages.map((r) => ({ path: String(r.path), n: Number(r.n) })),
+      topReferrers: topReferrers.map((r) => ({ host: String(r.host), n: Number(r.n) })),
+      devices: devices.map((r) => ({ device: String(r.device), n: Number(r.n) })),
+    };
+  } catch {
+    return empty;
+  }
 }
 
 /* ────────────────────────────────────────────────────────────────────
@@ -408,20 +557,29 @@ export async function feedbackView(
 }
 
 /* ────────────────────────────────────────────────────────────────────
- * SUBSCRIBERS (Buttondown list + audit-log growth)
+ * SUBSCRIBERS (owned Neon list — replaces Buttondown)
  *
- * Source-of-truth list lives in Buttondown; we pull the first page +
- * count via API. The growth chart comes from audit_log entries — every
- * subscribe call records {action: "email_subscribe"} with a timestamp
- * (and a hashed fingerprint, never the raw email), which is enough
- * to chart daily growth without ever persisting PII server-side.
+ * The address book now lives in our own `email_subscribers` table (double
+ * opt-in: pending → confirmed → unsubscribed). The growth chart counts
+ * confirmations per day (confirmed_at), and the recent list shows the real,
+ * owned rows. SES handles delivery; there is no external list to reconcile.
  * ────────────────────────────────────────────────────────────────── */
+
+export type SubscriberRow = {
+  email: string;
+  createdAt: Date;
+  confirmedAt: Date | null;
+  status: string;
+  tags: string[];
+};
 
 export type SubscriberView = {
   configured: boolean;
-  buttondownConfigured: boolean;
-  totalCount: number | null;
-  recent: Array<{ email: string; createdAt: Date; tags: string[] }>;
+  /** Confirmed subscribers (the deliverable list size). */
+  totalCount: number;
+  pendingCount: number;
+  unsubscribedCount: number;
+  recent: SubscriberRow[];
   growthPerDay: ChartPoint[];
   windowDays: number;
 };
@@ -429,21 +587,32 @@ export type SubscriberView = {
 export async function subscriberView(windowDays = 90): Promise<SubscriberView> {
   const out: SubscriberView = {
     configured: !!process.env.DATABASE_URL,
-    buttondownConfigured: !!process.env.BUTTONDOWN_API_KEY,
-    totalCount: null,
+    totalCount: 0,
+    pendingCount: 0,
+    unsubscribedCount: 0,
     recent: [],
     growthPerDay: [],
     windowDays,
   };
+  if (!process.env.DATABASE_URL) return out;
 
-  // Growth from audit_log (always available when DB is configured).
-  if (process.env.DATABASE_URL) {
+  try {
+    const statusRows = (await db.execute(sql`
+      select status, count(*)::int as n from email_subscribers group by status
+    `)) as unknown as Array<{ status: string; n: number }>;
+    for (const r of statusRows) {
+      if (r.status === "confirmed") out.totalCount = Number(r.n);
+      else if (r.status === "pending") out.pendingCount = Number(r.n);
+      else if (r.status === "unsubscribed") out.unsubscribedCount = Number(r.n);
+    }
+
+    // Growth = confirmations per day over the window.
     const since = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000);
     const perDay = (await db.execute(sql`
-      select to_char(ts, 'YYYY-MM-DD') as day, count(*)::int as n
-        from audit_log
-       where action = 'email_subscribe'
-         and ts >= ${tsParam(since)}
+      select to_char(confirmed_at, 'YYYY-MM-DD') as day, count(*)::int as n
+        from email_subscribers
+       where confirmed_at is not null
+         and confirmed_at >= ${tsParam(since)}
        group by day
        order by day
     `)) as unknown as Array<{ day: string; n: number }>;
@@ -456,42 +625,29 @@ export async function subscriberView(windowDays = 90): Promise<SubscriberView> {
       if (point.subscribes === undefined) point.subscribes = 0;
     }
     out.growthPerDay = Array.from(buckets.values());
-  }
 
-  // Live list from Buttondown.
-  if (process.env.BUTTONDOWN_API_KEY) {
-    try {
-      const res = await fetch(
-        "https://api.buttondown.email/v1/subscribers?ordering=-creation_date",
-        {
-          headers: {
-            Authorization: `Token ${process.env.BUTTONDOWN_API_KEY}`,
-            "Content-Type": "application/json",
-          },
-          // Buttondown's free tier is rate-limited; cache for 5 min.
-          next: { revalidate: 300 },
-        },
-      );
-      if (res.ok) {
-        const j = (await res.json()) as {
-          count?: number;
-          results?: Array<{
-            email_address?: string;
-            creation_date?: string;
-            tags?: string[];
-          }>;
-        };
-        out.totalCount = j.count ?? null;
-        out.recent = (j.results ?? []).slice(0, 100).map((s) => ({
-          email: s.email_address ?? "",
-          createdAt: s.creation_date ? new Date(s.creation_date) : new Date(0),
-          tags: s.tags ?? [],
-        }));
-      }
-    } catch {
-      // Buttondown unreachable — leave totalCount null; the page will
-      // render a "Buttondown unreachable" notice rather than crash.
-    }
+    const recent = (await db.execute(sql`
+      select email, created_at, confirmed_at, status, tags
+        from email_subscribers
+       order by created_at desc
+       limit 100
+    `)) as unknown as Array<{
+      email: string;
+      created_at: string;
+      confirmed_at: string | null;
+      status: string;
+      tags: unknown;
+    }>;
+    out.recent = recent.map((r) => ({
+      email: r.email,
+      createdAt: new Date(r.created_at),
+      confirmedAt: r.confirmed_at ? new Date(r.confirmed_at) : null,
+      status: r.status,
+      tags: Array.isArray(r.tags) ? (r.tags as string[]) : [],
+    }));
+  } catch {
+    // Table missing / DB unreachable — return the empty shape; the page
+    // renders a "no subscribers yet" state rather than crashing.
   }
 
   return out;

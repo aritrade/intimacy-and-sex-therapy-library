@@ -26,7 +26,7 @@ in place**. Until then, every cron step gracefully no-ops with a 503
 | YouTube         | **Brand account**, not your personal    | Set country = India for monetisation later.                                                                               |
 | LinkedIn Page   | Organisation (not personal)             | Owner of the page becomes the API actor.                                                                                  |
 | Twitter / X     | Standard                                | Free tier supports text-only posts.                                                                                       |
-| Buttondown      | Free tier (1,000 subs)                  | Skip if you'd rather not run an email list.                                                                               |
+| Amazon SES      | AWS account, SES in one region          | Owns the newsletter delivery. Verify a From mailbox + request production access — see "Amazon SES (newsletter)" below. Replaces Buttondown. |
 | Vercel Blob     | Storage on the Vercel project           | Free tier ≈ 1 GB; we use ~750 MB/month at the daily cadence.                                                              |
 
 Recommended handle: `intimacysextherapylibrary` everywhere. Bio:
@@ -149,6 +149,39 @@ Sept 12, 2025). Use a passkey or authenticator app, NOT SMS — see
 2. `LLM_PROVIDER=groq`, `GROQ_API_KEY=<key>`,
    `GROQ_MODEL=llama-3.3-70b-versatile`.
 
+### 9. Provision Amazon SES (newsletter)
+
+The owned newsletter list lives in our Neon DB (`email_subscribers`, double
+opt-in) and is delivered via Amazon SES. This replaces Buttondown. Powers
+`POST /api/email/subscribe` (confirmation email) and the weekly `send-digest`
+cron.
+
+1. **Pick a region** with SES (e.g. `us-east-1`) and set `AWS_REGION`.
+2. **Verify a From identity.** Without a custom sending domain, verify a
+   single mailbox: SES console → *Verified identities* → *Create identity* →
+   *Email address* → enter your From address → click the link in the
+   verification email. Set `SES_FROM` to a friendly form, e.g.
+   `Intimacy & Sex Library <youraddress@gmail.com>` (the address part must be
+   the verified identity).
+3. **Request production access.** New SES accounts are sandboxed (can only
+   send to verified addresses, 200/day). SES console → *Account dashboard* →
+   *Request production access*. Describe it honestly: a **double opt-in,
+   18+ educational** newsletter; confirm you honour one-click unsubscribe and
+   handle bounces/complaints. Approval is usually < 24h.
+4. **Create an IAM user** with a minimal policy allowing `ses:SendEmail`
+   (and `ses:SendRawEmail`). Generate an access key →
+   `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`.
+5. Until production access lands, signups to *unverified* addresses will fail
+   the SES send (the route returns 502 and the pending row stays unconfirmed).
+   The app itself degrades gracefully when `SES_FROM` / AWS creds are unset
+   (signup shows "not available", 503).
+
+**Deliverability note:** with no custom domain there's no DKIM/SPF/DMARC
+alignment, so mail may land in spam. Mitigations already baked in: double
+opt-in, a one-click `List-Unsubscribe` header, a recognizable From name, and
+low volume. A cheap custom domain (then verify the *domain* identity in SES
+and enable DKIM) is the durable fix.
+
 ---
 
 ## Day 0 — Set Vercel env vars
@@ -213,8 +246,12 @@ TWITTER_API_SECRET=<...>
 TWITTER_ACCESS_TOKEN=<...>
 TWITTER_ACCESS_SECRET=<...>
 
-# Email list (optional)
-BUTTONDOWN_API_KEY=<...>
+# Newsletter — owned list (Neon) + Amazon SES (see "Provision Amazon SES")
+# SES_FROM must be a verified SES identity; request production access first.
+AWS_REGION=us-east-1
+AWS_ACCESS_KEY_ID=<iam access key id>
+AWS_SECRET_ACCESS_KEY=<iam secret>
+SES_FROM=Intimacy & Sex Library <youraddress@gmail.com>
 
 # Site
 NEXT_PUBLIC_SITE_URL=https://intimacy-and-sex-therapy-library.vercel.app
@@ -235,6 +272,18 @@ GitHub → Settings → Secrets and variables → Actions:
 
 - `VERCEL_DEPLOY_URL` — `https://intimacy-and-sex-therapy-library.vercel.app`
 - `CRON_SECRET` — the same value you put in Vercel env
+
+The weekly `send-digest` workflow (`.github/workflows/send-digest.yml`) needs
+its own secrets — add these too:
+
+- `DATABASE_URL` — same Neon URL as Vercel
+- `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `SES_FROM` — the
+  SES values from "Provision Amazon SES"
+- `NEXT_PUBLIC_SITE_URL` — public base URL used to build resource/unsubscribe
+  links in the email (optional; falls back to the brand URL)
+
+Run `send-digest` once from the **Actions** tab with **dry_run = true** to
+confirm it builds a digest and counts recipients before sending for real.
 
 Trigger it manually once from the **Actions** tab to verify it can
 reach the endpoint.
@@ -654,7 +703,7 @@ We deliberately don't monetise yet. Open monetisation only AFTER:
 - [ ] 1,000 IG followers (eligibility for Reels Play and Branded
       Content).
 - [ ] 1,000 YouTube subs + 4,000 Shorts views (YPP threshold).
-- [ ] 50 Buttondown subscribers (signal of intent, not noise).
+- [ ] 50 confirmed newsletter subscribers (signal of intent, not noise).
 - [ ] 6 months of operator reviewing proposals without falling
       behind.
 

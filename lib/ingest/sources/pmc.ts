@@ -113,7 +113,11 @@ export async function fetchFullText(
   signal?: AbortSignal,
 ): Promise<string | null> {
   if (!hit.pmcid) return null;
-  const url = `${BASE}/PMC/${hit.pmcid.replace(/^PMC/, "")}/fullTextXML`;
+  // Europe PMC OA full text lives at /{PMCID}/fullTextXML where the id KEEPS
+  // its "PMC" prefix (e.g. /PMC10407917/fullTextXML). The older /PMC/{num}/...
+  // shape 404s for every article.
+  const pmcid = hit.pmcid.startsWith("PMC") ? hit.pmcid : `PMC${hit.pmcid}`;
+  const url = `${BASE}/${pmcid}/fullTextXML`;
   const res = await fetch(url, { signal });
   if (!res.ok) return null;
   const xml = await res.text();

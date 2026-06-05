@@ -11,7 +11,7 @@
 import { eq } from "drizzle-orm";
 import { db } from "../db/client";
 import { chunks, resourceTags, resources, sources, tags } from "../db/schema";
-import { embedBatch } from "../ai/embeddings";
+import { embedBatch, embeddingsEnabled } from "../ai/embeddings";
 import { canStoreFullText, type License } from "./license-gate";
 import { chunkText } from "./chunker";
 import { tagResource, type TaggerOutput } from "./tagger";
@@ -42,7 +42,7 @@ export async function ingestMany(records: IngestRecord[]): Promise<IngestSummary
   const summary: IngestSummary = {
     upserted: 0,
     skipped: [],
-    embeddingsRequested: !!process.env.OPENAI_API_KEY,
+    embeddingsRequested: embeddingsEnabled(),
   };
 
   for (const r of records) {

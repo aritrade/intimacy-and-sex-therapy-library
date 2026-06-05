@@ -4,6 +4,7 @@ import { desc, eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { contentDrafts, resources } from "@/lib/db/schema";
 import { generateScript, ScriptRefusal } from "@/lib/social/script-generator";
+import { retrieveEvidence } from "@/lib/social/grounding";
 import { requireApiAdmin } from "@/lib/auth/api-admin-guard";
 
 export const runtime = "nodejs";
@@ -83,9 +84,19 @@ export async function POST(req: Request) {
     }
   }
 
+  // Ground the script in the validated corpus (soft policy).
+  const grounding = await retrieveEvidence({ briefText: brief });
+
   let script;
   try {
-    script = await generateScript({ brief, language, durationSeconds, resource, style: inferredStyle });
+    script = await generateScript({
+      brief,
+      language,
+      durationSeconds,
+      resource,
+      style: inferredStyle,
+      evidence: { chunks: grounding.chunks, citation: grounding.citation },
+    });
   } catch (e) {
     if (e instanceof ScriptRefusal) {
       return NextResponse.json({ error: "refusal", reason: e.reason }, { status: 422 });
@@ -102,6 +113,12 @@ export async function POST(req: Request) {
       scriptMd: serialiseScriptToMd(script),
       resourceId: resourceId ?? null,
       status: "script_draft",
+      grounding: {
+        chunkIds: grounding.chunks.map((c) => c.chunkId),
+        sources: grounding.sources.map((s) => ({ title: s.title, url: s.url, year: s.year })),
+        score: grounding.score,
+        lowGrounding: grounding.lowGrounding,
+      },
     })
     .returning();
 

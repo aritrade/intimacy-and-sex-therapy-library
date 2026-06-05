@@ -23,36 +23,26 @@ export default async function AdminSubscribers({
         <p className="pill-coral w-fit">Admin · Subscribers</p>
         <h1 className="mt-3 font-serif text-3xl text-ink-900">Newsletter subscribers</h1>
         <p className="mt-2 text-ink-600">
-          The growth chart comes from our own audit log (every subscribe event
-          is timestamped server-side with a hashed fingerprint — no email
-          stored). The live list is pulled from Buttondown, where the
-          source-of-truth address book lives.
+          We own this list in our own database (double opt-in). The chart counts
+          confirmations per day; the table below is the live, owned address book.
+          Delivery is handled by Amazon SES, and every email carries a one-click
+          unsubscribe.
         </p>
       </header>
 
       {/* TOP-LINE COUNTERS */}
-      <section className="grid gap-3 sm:grid-cols-3">
-        <Counter
-          label="Total subscribers"
-          value={view.totalCount ?? 0}
-          suffix={view.totalCount === null ? "(unavailable)" : undefined}
-        />
-        <Counter
-          label={`New (last ${windowDays}d)`}
-          value={view.growthPerDay.reduce(
-            (a, b) => a + (Number(b.subscribes) || 0),
-            0,
-          )}
-          accent="teal"
-        />
+      <section className="grid gap-3 sm:grid-cols-4">
+        <Counter label="Confirmed" value={view.totalCount} accent="teal" />
+        <Counter label="Pending" value={view.pendingCount} accent="plum" />
+        <Counter label="Unsubscribed" value={view.unsubscribedCount} accent="coral" />
         <div className="card p-4 h-full flex items-center justify-between gap-3">
           <div>
             <p className="text-[11px] uppercase tracking-wider text-ink-400">
               Export
             </p>
-            <p className="text-sm text-ink-700 mt-1">CSV from Buttondown.</p>
+            <p className="text-sm text-ink-700 mt-1">Confirmed list as CSV.</p>
           </div>
-          {view.buttondownConfigured ? (
+          {view.configured ? (
             <a
               href={`/api/admin/subscribers.csv`}
               className="btn-secondary text-sm"
@@ -60,7 +50,7 @@ export default async function AdminSubscribers({
               Download CSV
             </a>
           ) : (
-            <span className="text-xs text-ink-400">Set BUTTONDOWN_API_KEY</span>
+            <span className="text-xs text-ink-400">Set DATABASE_URL</span>
           )}
         </div>
       </section>
@@ -68,25 +58,17 @@ export default async function AdminSubscribers({
       {/* CONFIG WARNINGS */}
       {!view.configured && (
         <div className="mt-4 card p-4 text-sm text-ink-600 border border-coral/40 bg-coral/5">
-          DATABASE_URL is not configured — the growth chart will be empty until
-          it is.
-        </div>
-      )}
-      {view.configured && !view.buttondownConfigured && (
-        <div className="mt-4 card p-4 text-sm text-ink-600 border border-warn/40 bg-warn/10">
-          <strong className="text-ink-900">BUTTONDOWN_API_KEY is not set.</strong>{" "}
-          The growth chart still works (it comes from our audit log), but we
-          can't show the live subscriber list or total count until Buttondown is
-          configured.
+          DATABASE_URL is not configured — the subscriber list and growth chart
+          will be empty until it is.
         </div>
       )}
 
       {/* GROWTH CHART */}
       <section className="mt-8 card p-5">
-        <h2 className="font-serif text-xl text-ink-900">New signups per day</h2>
+        <h2 className="font-serif text-xl text-ink-900">New confirmations per day</h2>
         <p className="mt-1 text-sm text-ink-600">
-          Last {windowDays} days. From audit log — every subscribe call writes
-          one timestamped row.
+          Last {windowDays} days. Counts subscribers who completed double opt-in
+          on that day.
         </p>
         <div className="mt-4">
           <AreaChartCard
@@ -114,11 +96,9 @@ export default async function AdminSubscribers({
           <h2 className="font-serif text-xl text-ink-900">
             Recent subscribers ({view.recent.length})
           </h2>
-          {view.totalCount !== null && (
-            <span className="text-xs text-ink-400">
-              of {view.totalCount.toLocaleString()} total
-            </span>
-          )}
+          <span className="text-xs text-ink-400">
+            {view.totalCount.toLocaleString()} confirmed
+          </span>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -126,14 +106,15 @@ export default async function AdminSubscribers({
               <tr>
                 <th className="text-left font-normal px-3 py-2">When</th>
                 <th className="text-left font-normal px-3 py-2">Email</th>
+                <th className="text-left font-normal px-3 py-2">Status</th>
                 <th className="text-left font-normal px-3 py-2">Tags</th>
               </tr>
             </thead>
             <tbody>
               {view.recent.length === 0 ? (
                 <tr>
-                  <td colSpan={3} className="px-3 py-6 text-center text-ink-400">
-                    No subscribers yet, or Buttondown not reachable.
+                  <td colSpan={4} className="px-3 py-6 text-center text-ink-400">
+                    No subscribers yet.
                   </td>
                 </tr>
               ) : (
@@ -148,6 +129,9 @@ export default async function AdminSubscribers({
                       <a href={`mailto:${s.email}`} className="underline">
                         {s.email}
                       </a>
+                    </td>
+                    <td className="px-3 py-2 text-xs">
+                      <StatusPill status={s.status} />
                     </td>
                     <td className="px-3 py-2 text-ink-700 text-xs">
                       {s.tags.length === 0 ? (
@@ -177,6 +161,16 @@ export default async function AdminSubscribers({
       </p>
     </div>
   );
+}
+
+function StatusPill({ status }: { status: string }) {
+  const cls =
+    status === "confirmed"
+      ? "pill-teal"
+      : status === "pending"
+        ? "pill-plum"
+        : "pill-coral";
+  return <span className={`${cls} text-[10px]`}>{status}</span>;
 }
 
 function Counter({

@@ -31,6 +31,7 @@ import { eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { contentDrafts } from "@/lib/db/schema";
 import { generateScript, ScriptRefusal } from "@/lib/social/script-generator";
+import { retrieveEvidence } from "@/lib/social/grounding";
 import { recordAudit } from "@/lib/observability/audit";
 import { getActor } from "@/lib/admin/actor";
 import { requireApiAdmin } from "@/lib/auth/api-admin-guard";
@@ -189,6 +190,9 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
   const { style, durationSeconds } = inferStyleAndDuration(previousScriptMd);
 
+  // Re-ground the regeneration in the corpus (soft policy).
+  const grounding = await retrieveEvidence({ briefText: draft.brief });
+
   let newScript;
   try {
     newScript = await generateScript({
@@ -196,6 +200,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       language: draft.language as "en" | "hi" | "hinglish",
       durationSeconds,
       style,
+      evidence: { chunks: grounding.chunks, citation: grounding.citation },
       reviewerFeedback: {
         previousScriptMd,
         // Strip server-only fields before passing to the LLM prompt.
@@ -231,6 +236,12 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       captionsSrt: null,
       clinicianReviewerId: null,
       editorReviewerId: null,
+      grounding: {
+        chunkIds: grounding.chunks.map((c) => c.chunkId),
+        sources: grounding.sources.map((s) => ({ title: s.title, url: s.url, year: s.year })),
+        score: grounding.score,
+        lowGrounding: grounding.lowGrounding,
+      },
     })
     .where(eq(contentDrafts.id, params.id));
 

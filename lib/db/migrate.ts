@@ -15,14 +15,22 @@ async function main() {
   console.log("Running drizzle-kit generated migrations...");
   await migrate(db, { migrationsFolder: "./drizzle" });
 
-  console.log("Applying hand-written index migration (pgvector + GIN)...");
-  const sqlPath = join(process.cwd(), "drizzle", "0001_indexes.sql");
-  await client.unsafe(readFileSync(sqlPath, "utf8"));
+  // Hand-written migrations drizzle-kit doesn't model well (extensions,
+  // pgvector index, idempotent ALTERs). Applied in order, all idempotent.
+  const handWritten = [
+    ["pgvector + GIN indexes", "0001_indexes.sql"],
+    ["reviewer-notes column (Phase 13)", "0002_reviewer_notes.sql"],
+    ["embeddings -> Gemini 768-dim", "0005_vector_768.sql"],
+    ["content_drafts.grounding column", "0006_grounding.sql"],
+    ["content_drafts.archived_at column", "0007_archive_drafts.sql"],
+    ["email_subscribers table", "0008_email_subscribers.sql"],
+    ["page_views table", "0009_page_views.sql"],
+  ] as const;
 
-  // Phase 13: append-only reviewer feedback column. Idempotent.
-  console.log("Applying reviewer-notes migration (Phase 13)...");
-  const reviewerSql = join(process.cwd(), "drizzle", "0002_reviewer_notes.sql");
-  await client.unsafe(readFileSync(reviewerSql, "utf8"));
+  for (const [label, file] of handWritten) {
+    console.log(`Applying hand-written migration: ${label} (${file})...`);
+    await client.unsafe(readFileSync(join(process.cwd(), "drizzle", file), "utf8"));
+  }
 
   console.log("Migrations complete.");
   await client.end();

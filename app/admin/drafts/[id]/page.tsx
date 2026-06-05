@@ -116,6 +116,8 @@ export default async function DraftReview({ params }: { params: { id: string } }
         </section>
       )}
 
+      <GroundingSection grounding={draft.grounding ?? null} />
+
       <section aria-label="Parsed script" className="grid gap-4 mt-4">
         {parsed.hook && (
           <SectionCard title="Hook" tone="accent">
@@ -276,6 +278,59 @@ export default async function DraftReview({ params }: { params: { id: string } }
         ← Back to drafts queue
       </Link>
     </div>
+  );
+}
+
+type DraftGrounding = {
+  chunkIds?: string[];
+  sources: Array<{ title: string; url: string; year: number | null }>;
+  score: number;
+  lowGrounding: boolean;
+} | null;
+
+function GroundingSection({ grounding }: { grounding: DraftGrounding }) {
+  if (!grounding) return null;
+  const sources = grounding.sources ?? [];
+  const low = grounding.lowGrounding;
+  return (
+    <section
+      className={`card p-5 mt-4 ${low ? "border-coral/30 bg-coral/5" : "border-teal/30 bg-teal/5"}`}
+    >
+      <div className="flex items-center gap-2 flex-wrap">
+        <h2 className="font-serif text-xl text-ink-900">Grounding evidence</h2>
+        {low ? (
+          <span className="pill-coral text-[11px]">⚠ Low grounding</span>
+        ) : (
+          <span className="pill-teal text-[11px]">✓ Grounded</span>
+        )}
+        <span className="ml-auto text-xs text-ink-400">score {grounding.score}</span>
+      </div>
+      {low && (
+        <p className="mt-2 text-sm text-ink-600">
+          No strong corpus evidence was retrieved for this brief. Verify every
+          factual claim against a peer-reviewed source before approving.
+        </p>
+      )}
+      {sources.length > 0 ? (
+        <ul className="mt-3 space-y-1.5 text-sm">
+          {sources.map((s, i) => (
+            <li key={`${s.url}-${i}`} className="text-ink-700">
+              <a
+                href={s.url}
+                target="_blank"
+                rel="noreferrer"
+                className="underline hover:text-ink-900"
+              >
+                {s.title}
+                {s.year ? ` (${s.year})` : ""}
+              </a>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="mt-2 text-xs text-ink-400">No sources retrieved.</p>
+      )}
+    </section>
   );
 }
 

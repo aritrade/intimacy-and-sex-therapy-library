@@ -1,15 +1,15 @@
 /**
  * POST /api/email/subscribe   { email, locale? }
  *
- * Forwards the address to Buttondown's "Add subscriber" endpoint.
- * Stays a server-side proxy so we don't ship the API key to the
- * browser. Returns 503 when BUTTONDOWN_API_KEY is unset (the form
- * gracefully degrades to a "not available" message).
+ * Owned double opt-in signup (replaces the Buttondown proxy). Inserts a
+ * `pending` row into email_subscribers (the list now lives in our Neon DB,
+ * the source of truth) and sends a confirmation email via Amazon SES. The
+ * subscriber becomes `confirmed` only after clicking the confirm link.
  *
- * Privacy: we never store the email server-side. Buttondown is the
- * source of truth; the only thing that hits our DB is an audit row
- * with the hashed email so we can answer "did this address sign up?"
- * during a DPDP / GDPR right-to-know request.
+ * Gracefully degrades to 503 when SES isn't configured, so the form shows a
+ * "not available" message instead of erroring. Honeypot + deep email
+ * validation are preserved; a hashed-email audit row is still written for
+ * DPDP / right-to-know requests.
  */
 
 import { NextResponse } from "next/server";
@@ -17,6 +17,13 @@ import { z } from "zod";
 import { createHash } from "node:crypto";
 import { recordAudit } from "@/lib/observability/audit";
 import { validateEmailDeep } from "@/lib/validation/email";
+import { sendEmail, sesConfigured } from "@/lib/email/ses";
+import {
+  upsertPendingSubscriber,
+  confirmUrl,
+  unsubscribeUrl,
+} from "@/lib/email/subscribers";
+import { confirmEmail } from "@/lib/email/templates";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -48,35 +55,41 @@ export async function POST(req: Request) {
   }
   const cleanEmail = emailCheck.normalized;
 
-  const key = process.env.BUTTONDOWN_API_KEY;
-  if (!key) {
+  if (!sesConfigured()) {
     return NextResponse.json(
-      { error: "email_disabled", detail: "Set BUTTONDOWN_API_KEY to enable list signup." },
+      { error: "email_disabled", detail: "Set SES_FROM + AWS_* envs to enable list signup." },
       { status: 503 },
     );
   }
 
-  const tags = ["website-signup"];
-  if (locale) tags.push(`locale:${locale}`);
+  const outcome = await upsertPendingSubscriber(cleanEmail, locale);
 
-  const res = await fetch("https://api.buttondown.email/v1/subscribers", {
-    method: "POST",
-    headers: {
-      Authorization: `Token ${key}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      email_address: cleanEmail,
-      tags,
-    }),
+  // Already confirmed → idempotent success, no second confirmation email.
+  if (outcome.alreadyConfirmed) {
+    const fp = createHash("sha256").update(cleanEmail).digest("hex").slice(0, 16);
+    void recordAudit({
+      actor: "public:subscribe",
+      action: "email_subscribe",
+      meta: { fingerprint: fp, locale: locale ?? null, alreadyConfirmed: true },
+    });
+    return NextResponse.json({ ok: true, alreadyConfirmed: true });
+  }
+
+  const tpl = confirmEmail({
+    confirmUrl: confirmUrl(outcome.confirmToken),
+    unsubUrl: unsubscribeUrl(outcome.unsubToken),
+  });
+  const sent = await sendEmail({
+    to: cleanEmail,
+    subject: tpl.subject,
+    html: tpl.html,
+    text: tpl.text,
+    listUnsubscribeUrl: unsubscribeUrl(outcome.unsubToken),
   });
 
-  // Buttondown returns 201 on create, 400 with `subscribers must be unique`
-  // when the email already exists — we treat that as success.
-  const data = (await res.json().catch(() => ({}))) as { code?: string; detail?: string };
-  if (!res.ok && data.code !== "email_already_exists") {
+  if (!sent.ok) {
     return NextResponse.json(
-      { error: "buttondown_failed", detail: data.detail ?? `${res.status}` },
+      { error: "email_send_failed", detail: sent.reason },
       { status: 502 },
     );
   }
@@ -85,8 +98,8 @@ export async function POST(req: Request) {
   void recordAudit({
     actor: "public:subscribe",
     action: "email_subscribe",
-    meta: { fingerprint, locale: locale ?? null, alreadyExisted: data.code === "email_already_exists" },
+    meta: { fingerprint, locale: locale ?? null, status: "pending" },
   });
 
-  return NextResponse.json({ ok: true, alreadyExisted: data.code === "email_already_exists" });
+  return NextResponse.json({ ok: true, pending: true });
 }

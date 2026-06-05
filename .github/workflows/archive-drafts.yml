@@ -1,0 +1,61 @@
+# Daily soft-archive of settled posted/taken-down drafts.
+#
+# Why this exists:
+#   /admin/drafts?status=posted accumulates every post forever. This job
+#   stamps content_drafts.archived_at on posted/taken_down drafts older than
+#   the window (default 45 days, safely past the 30-day metrics poll window)
+#   so the admin list stays uncluttered. Status is NEVER changed, so the
+#   metrics poller and platformPostIds are untouched — archived drafts remain
+#   reachable under the "archived" filter.
+#
+# Schedule offset: daily at 04:17 UTC (away from prune-blobs :43, render-due
+#   :23, publish-due :07, and the daily-generate window).
+#
+# Required GH Actions secrets:
+#   - DATABASE_URL   (Neon postgres URL)
+
+name: archive-drafts
+
+on:
+  schedule:
+    - cron: "17 4 * * *"
+  workflow_dispatch:
+    inputs:
+      days:
+        description: "Archive posted/taken_down drafts older than N days (default 45)"
+        required: false
+        type: string
+
+concurrency:
+  group: archive-drafts
+  cancel-in-progress: false
+
+jobs:
+  archive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install npm deps
+        run: npm ci --no-audit --no-fund
+
+      - name: Archive posted drafts
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          ARCHIVE_AFTER_DAYS: ${{ inputs.days }}
+        run: npx tsx scripts/archive-posted-drafts.ts
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "### archive-drafts summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "* trigger: ${{ github.event_name }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "* days   : ${{ inputs.days || '(default 45)' }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "* status : ${{ job.status }}" >> "$GITHUB_STEP_SUMMARY"

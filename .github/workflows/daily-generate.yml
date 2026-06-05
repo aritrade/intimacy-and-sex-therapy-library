@@ -14,6 +14,8 @@
 #   - DATABASE_URL   (secret — Neon postgres URL)
 #   - GROQ_API_KEY   (secret — LLM key)
 #   - GROQ_MODEL     (variable — defaults to llama-3.3-70b-versatile)
+#   - GEMINI_API_KEY (secret — embeddings for RAG grounding; optional but
+#                     without it drafts are flagged "low grounding")
 
 name: daily-generate
 
@@ -51,6 +53,7 @@ jobs:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           LLM_PROVIDER: groq
           GROQ_MODEL: ${{ vars.GROQ_MODEL || 'llama-3.3-70b-versatile' }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: npx tsx scripts/daily-generate.ts
 
       - name: Summary

@@ -10,7 +10,7 @@
  * No prompt or message content is read by anything in this module.
  */
 
-import { and, desc, eq, gte, inArray, isNotNull, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import {
   contentDrafts,
@@ -28,6 +28,11 @@ function daysAgo(n: number): Date {
 
 export type DraftStateCounts = Record<string, number>;
 
+/**
+ * Per-status counts of NON-archived drafts (the default admin list hides
+ * archived rows). Archived drafts are counted separately by
+ * `archivedDraftCount()`.
+ */
 export async function draftStateCounts(): Promise<DraftStateCounts> {
   if (!process.env.DATABASE_URL) return {};
   try {
@@ -37,12 +42,27 @@ export async function draftStateCounts(): Promise<DraftStateCounts> {
         n: sql<number>`count(*)::int`,
       })
       .from(contentDrafts)
+      .where(isNull(contentDrafts.archivedAt))
       .groupBy(contentDrafts.status);
     const out: DraftStateCounts = {};
     for (const r of rows) out[r.status] = Number(r.n);
     return out;
   } catch {
     return {};
+  }
+}
+
+/** Count of soft-archived drafts (archived_at IS NOT NULL). */
+export async function archivedDraftCount(): Promise<number> {
+  if (!process.env.DATABASE_URL) return 0;
+  try {
+    const [row] = await db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(contentDrafts)
+      .where(isNotNull(contentDrafts.archivedAt));
+    return Number(row?.n ?? 0);
+  } catch {
+    return 0;
   }
 }
 

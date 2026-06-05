@@ -20,6 +20,7 @@ import {
   pickBriefsForToday,
   type ContentBrief,
 } from "@/lib/social/content-briefs";
+import { retrieveEvidence } from "@/lib/social/grounding";
 import { recordAudit } from "@/lib/observability/audit";
 
 export type DailyGenerateSummary = {
@@ -274,6 +275,13 @@ async function generateOne(job: Job, actor: string): Promise<GenerateOutcome> {
     }
   }
 
+  // Retrieve grounding evidence from the validated corpus. Soft policy:
+  // empty result -> generate ungrounded but flag the draft low-grounding.
+  const grounding = await retrieveEvidence({
+    briefText: brief.brief,
+    topicSlug: brief.topicSlug,
+  });
+
   try {
     const script = await generateScript({
       brief: brief.brief,
@@ -281,6 +289,7 @@ async function generateOne(job: Job, actor: string): Promise<GenerateOutcome> {
       durationSeconds,
       style,
       resource,
+      evidence: { chunks: grounding.chunks, citation: grounding.citation },
     });
 
     await db.insert(contentDrafts).values({
@@ -289,6 +298,12 @@ async function generateOne(job: Job, actor: string): Promise<GenerateOutcome> {
       brief: brief.brief,
       scriptMd: serialiseScriptToMd(script, style),
       status: "script_draft",
+      grounding: {
+        chunkIds: grounding.chunks.map((c) => c.chunkId),
+        sources: grounding.sources.map((s) => ({ title: s.title, url: s.url, year: s.year })),
+        score: grounding.score,
+        lowGrounding: grounding.lowGrounding,
+      },
     });
 
     await recordAudit({

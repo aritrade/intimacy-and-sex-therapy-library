@@ -1,68 +1,50 @@
 /**
  * GET /api/admin/subscribers.csv
  *
- * Streams the live Buttondown subscriber list as CSV. Admin-gated.
- *
- * Pulls all pages from Buttondown (default page size 100). Returns
- * 503 if BUTTONDOWN_API_KEY is unset.
+ * Streams the owned, confirmed subscriber list (email_subscribers) as CSV.
+ * Admin-gated. Only confirmed addresses are exported — that's the list you'd
+ * actually mail. Returns 503 when DATABASE_URL is unset.
  */
 
 import { NextResponse } from "next/server";
+import { sql } from "drizzle-orm";
 import { requireApiAdmin } from "@/lib/auth/api-admin-guard";
 import { rowsToCsv } from "@/lib/admin/dashboard-stats";
+import { db } from "@/lib/db/client";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-type ButtondownSub = {
-  email_address?: string;
-  creation_date?: string;
-  tags?: string[];
-  subscriber_type?: string;
-};
 
 export async function GET() {
   const guard = await requireApiAdmin();
   if (guard instanceof NextResponse) return guard;
 
-  const key = process.env.BUTTONDOWN_API_KEY;
-  if (!key) {
-    return NextResponse.json(
-      { error: "buttondown_not_configured" },
-      { status: 503 },
-    );
+  if (!process.env.DATABASE_URL) {
+    return NextResponse.json({ error: "db_not_configured" }, { status: 503 });
   }
 
-  const all: ButtondownSub[] = [];
-  let next: string | null =
-    "https://api.buttondown.email/v1/subscribers?ordering=-creation_date";
-  // Hard ceiling so we never accidentally make 100k calls from a bug.
-  const MAX_PAGES = 100;
-  let pages = 0;
-  while (next && pages < MAX_PAGES) {
-    const res = await fetch(next, {
-      headers: { Authorization: `Token ${key}` },
-    });
-    if (!res.ok) {
-      return NextResponse.json(
-        { error: "buttondown_failed", status: res.status, detail: (await res.text()).slice(0, 200) },
-        { status: 502 },
-      );
-    }
-    const j = (await res.json()) as { next?: string | null; results?: ButtondownSub[] };
-    all.push(...(j.results ?? []));
-    next = j.next ?? null;
-    pages++;
-  }
+  const rows = (await db.execute(sql`
+    select email, status, created_at, confirmed_at, tags
+      from email_subscribers
+     where status = 'confirmed'
+     order by confirmed_at desc nulls last, created_at desc
+  `)) as unknown as Array<{
+    email: string;
+    status: string;
+    created_at: string;
+    confirmed_at: string | null;
+    tags: unknown;
+  }>;
 
   const csv = rowsToCsv(
-    all.map((s) => ({
-      created_at: s.creation_date ?? "",
-      email: s.email_address ?? "",
-      subscriber_type: s.subscriber_type ?? "",
-      tags: (s.tags ?? []).join("|"),
+    rows.map((s) => ({
+      email: s.email,
+      status: s.status,
+      created_at: s.created_at ?? "",
+      confirmed_at: s.confirmed_at ?? "",
+      tags: Array.isArray(s.tags) ? (s.tags as string[]).join("|") : "",
     })),
-    ["created_at", "email", "subscriber_type", "tags"],
+    ["email", "status", "created_at", "confirmed_at", "tags"],
   );
 
   return new NextResponse(csv, {

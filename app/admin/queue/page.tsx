@@ -126,6 +126,7 @@ export default async function QueuePage() {
                         videoUrl: d.videoUrl,
                         captionsSrt: d.captionsSrt,
                         scriptMd: d.scriptMd,
+                        grounding: d.grounding ?? null,
                         createdAt: d.createdAt.toISOString(),
                       }}
                     />

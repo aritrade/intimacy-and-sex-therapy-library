@@ -4,20 +4,22 @@ import { useState } from "react";
 import { quickEmailCheck } from "@/lib/validation/email-client";
 
 /**
- * Cookieless email-list signup powered by Buttondown.
+ * Cookieless email-list signup for the owned newsletter (Neon + Amazon SES).
  *
  * Render anywhere. The component:
- *   - POSTs to /api/email/subscribe (which proxies Buttondown).
+ *   - POSTs to /api/email/subscribe, which creates a `pending` subscriber and
+ *     sends a confirmation email (double opt-in).
  *   - Accepts an optional `locale` prop to tag the subscriber.
- *   - Includes a hidden honeypot field; bots that fill it get a 200
- *     but are never forwarded to Buttondown.
- *   - Reports a graceful "email signup not configured" message if
- *     the server returns 503.
+ *   - Includes a hidden honeypot field; bots that fill it get a 200 but never
+ *     create a subscriber.
+ *   - Reports a graceful "email signup not configured" message if the server
+ *     returns 503 (SES unconfigured).
  *
  * Privacy / consent:
  *   - We render a small "what you'll get" line + an inline link to
  *     /about/privacy so consent is informed.
- *   - We do NOT store the email server-side; only Buttondown does.
+ *   - The address is stored in our own database under double opt-in; it isn't
+ *     active until the user clicks the confirmation link.
  */
 export function EmailSignup({
   locale,
@@ -57,7 +59,8 @@ export function EmailSignup({
       });
       const data = (await res.json().catch(() => ({}))) as {
         ok?: boolean;
-        alreadyExisted?: boolean;
+        alreadyConfirmed?: boolean;
+        pending?: boolean;
         error?: string;
         detail?: string;
       };
@@ -69,9 +72,9 @@ export function EmailSignup({
         setError(data.detail ?? data.error ?? "Couldn't subscribe. Try again.");
       } else {
         setDone(
-          data.alreadyExisted
-            ? "You're already on the list — see you Monday!"
-            : "Subscribed. Check your inbox to confirm.",
+          data.alreadyConfirmed
+            ? "You're already on the list — see you soon!"
+            : "Almost there — check your inbox to confirm your subscription.",
         );
         setEmail("");
       }
