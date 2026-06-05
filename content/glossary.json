@@ -8,7 +8,7 @@
       "category": "dysfunction",
       "plain": "Involuntary tightening of the muscles around the vagina that makes any kind of vaginal entry painful or impossible — even when the person wants the entry. It is treatable with pelvic-floor physiotherapy, gradual exposure, and sometimes therapy for fear or trauma.",
       "clinical": "DSM-5-TR groups vaginismus and dyspareunia together under Genito-Pelvic Pain/Penetration Disorder. ICD-11 lists it as HA20.0.",
-      "see_also": ["dyspareunia", "pelvic_floor"]
+      "see_also": ["Dyspareunia", "Pelvic floor"]
     },
     {
       "term": "Dyspareunia",
@@ -89,7 +89,205 @@
       "aka": ["CNM", "ethical non-monogamy", "ENM"],
       "category": "relationship",
       "plain": "Relationship structures where everyone involved knows about and agrees to multiple sexual or romantic connections — including polyamory, open relationships, swinging, and relationship anarchy. The core requirements are honesty, ongoing consent, and care.",
-      "clinical": "Reviewed in Conley et al. (2017). Investigating the persistence of stigma against CNM."
+      "clinical": "Reviewed in Conley et al. (2017). Investigating the persistence of stigma against CNM.",
+      "see_also": ["Polyamory", "Relationship anarchy", "Compersion"]
+    },
+    {
+      "term": "Anorgasmia",
+      "aka": ["Female orgasmic disorder"],
+      "category": "dysfunction",
+      "plain": "Persistent difficulty reaching orgasm, or markedly reduced intensity of orgasm, despite enough arousal and stimulation — often enough to be distressing. Very common and treatable; causes range from anxiety and 'trying too hard' to medication, hormones, or limited stimulation.",
+      "clinical": "DSM-5-TR: Female Orgasmic Disorder.",
+      "see_also": ["Spectatoring", "Sensate focus"]
+    },
+    {
+      "term": "Delayed ejaculation",
+      "aka": ["DE"],
+      "category": "dysfunction",
+      "plain": "Marked delay in, infrequency of, or absence of ejaculation during partnered sex, causing distress. Often linked to anxiety, certain medications (especially some antidepressants), or a mismatch between solo and partnered stimulation.",
+      "clinical": "DSM-5-TR: Delayed Ejaculation."
+    },
+    {
+      "term": "Male hypoactive sexual desire disorder",
+      "aka": ["MHSDD"],
+      "category": "dysfunction",
+      "plain": "Persistently low or absent sexual thoughts and desire in men that lasts at least six months and is distressing. Desire is influenced by hormones, mood, relationship dynamics, sleep, and medication — so assessment looks at the whole picture.",
+      "clinical": "DSM-5-TR: Male Hypoactive Sexual Desire Disorder."
+    },
+    {
+      "term": "Persistent genital arousal disorder",
+      "aka": ["PGAD", "PGAD/GPD"],
+      "category": "dysfunction",
+      "plain": "Unwanted, intrusive feelings of genital arousal (sensations, throbbing, or near-orgasm) without sexual desire, that don't fully resolve and cause significant distress. It is a recognised medical condition — not 'too much libido' — and deserves careful, non-judgemental assessment.",
+      "clinical": "ISSWSH expert consensus: PGAD/Genito-Pelvic Dysesthesia (Goldstein et al., 2021)."
+    },
+    {
+      "term": "Vulvodynia",
+      "category": "dysfunction",
+      "plain": "Chronic vulvar pain (burning, stinging, or rawness) lasting three months or more without a clear identifiable cause. Management is multidisciplinary: medical assessment, pelvic-floor physiotherapy, and often psychological support for the pain and its impact on intimacy.",
+      "clinical": "2015 Consensus Terminology (Bornstein et al.; ISSVD/ISSWSH/IPPS).",
+      "see_also": ["Dyspareunia", "Pelvic floor"]
+    },
+    {
+      "term": "Pelvic floor",
+      "category": "anatomy",
+      "plain": "The sling of muscles at the base of the pelvis that supports the bladder, bowel, and (in some bodies) the uterus, and that's involved in continence and sexual function. When these muscles are too tense or too weak, they can contribute to pain, arousal, or orgasm difficulties. Pelvic-floor physiotherapy is a first-line, evidence-based treatment.",
+      "clinical": "See pelvic-floor physiotherapy literature for genito-pelvic pain and dysfunction."
+    },
+    {
+      "term": "Spectatoring",
+      "category": "concept",
+      "plain": "Mentally stepping outside the moment to monitor and judge your own body or 'performance' during sex, instead of staying with sensation. It's a common driver of arousal and orgasm difficulties, and a key target of mindfulness-based and sensate-focus work.",
+      "clinical": "Coined by Masters & Johnson (1970).",
+      "see_also": ["Sensate focus", "Mindfulness-based sex therapy"]
+    },
+    {
+      "term": "Arousal nonconcordance",
+      "category": "concept",
+      "plain": "The normal mismatch between what the genitals do (lubrication, erection) and what the person actually feels turned on by. Physical arousal is not the same as desire or consent — bodies can respond without the person wanting sex, and vice versa.",
+      "clinical": "Chivers et al. meta-analysis (2010); popularised by Nagoski, Come As You Are."
+    },
+    {
+      "term": "Spontaneous desire",
+      "category": "model",
+      "plain": "Desire that seems to arrive 'out of the blue', before any sexual cue. It's one normal pattern of wanting sex — responsive desire (which builds after intimacy starts) is equally normal. Neither is better; partners often differ.",
+      "clinical": "Contrasted with responsive desire in Basson's model.",
+      "see_also": ["Responsive desire", "Desire discrepancy"]
+    },
+    {
+      "term": "Desire discrepancy",
+      "category": "concept",
+      "plain": "When partners want sex at different frequencies or in different ways. It is one of the most common reasons couples seek sex therapy — and it's a difference to negotiate, not a fault in either person.",
+      "clinical": "A primary presenting concern in couple/sex therapy outcome research.",
+      "see_also": ["Responsive desire", "Spontaneous desire"]
+    },
+    {
+      "term": "Sexual script theory",
+      "category": "concept",
+      "plain": "The idea that we learn unspoken 'scripts' — from culture, media, family, and past experience — for how sex is supposed to go. Rewriting rigid or mismatched scripts together is often where change happens.",
+      "clinical": "Gagnon, J. & Simon, W. (1973). Sexual Conduct."
+    },
+    {
+      "term": "Minority stress",
+      "category": "concept",
+      "plain": "The extra, chronic stress that people from stigmatised groups (such as LGBTQ+ people) carry from prejudice, discrimination, and having to conceal who they are. It helps explain health and relationship disparities — without locating the problem inside the person.",
+      "clinical": "Meyer, I. H. (2003). Prejudice, social stress, and mental health in LGB populations.",
+      "see_also": ["Gender-affirming care"]
+    },
+    {
+      "term": "Window of tolerance",
+      "category": "concept",
+      "plain": "The zone of arousal in which a person can stay present and think clearly. Outside it, they tip into overwhelm (fight/flight) or shut-down (freeze). Trauma-informed intimacy work helps people notice and widen this window so sex can feel safe.",
+      "clinical": "Coined by Dan Siegel (1999); central to trauma-informed care.",
+      "see_also": ["Trauma-informed care"]
+    },
+    {
+      "term": "Emotionally focused therapy",
+      "aka": ["EFT"],
+      "category": "modality",
+      "plain": "A structured couples therapy that treats the bond between partners as an attachment relationship. It helps couples break negative cycles and create safe emotional connection — which often unlocks sexual closeness too.",
+      "clinical": "Sue Johnson; strong RCT evidence base for couple distress."
+    },
+    {
+      "term": "Gottman Method",
+      "category": "modality",
+      "plain": "A research-based couples approach built on decades of observing real couples. It focuses on friendship, managing conflict, and shared meaning, using practical tools like 'love maps' and repair attempts.",
+      "clinical": "John & Julie Gottman; The Gottman Institute."
+    },
+    {
+      "term": "Mindfulness-based sex therapy",
+      "category": "modality",
+      "plain": "Using mindfulness — paying gentle, non-judgemental attention to the present — to reduce spectatoring and reconnect with bodily sensation. Strong evidence for desire and arousal concerns, especially in women.",
+      "clinical": "Lori Brotto; Better Sex Through Mindfulness (2018).",
+      "see_also": ["Spectatoring"]
+    },
+    {
+      "term": "Trauma-informed care",
+      "category": "modality",
+      "plain": "An approach that assumes a person may have a trauma history and prioritises safety, choice, and control at every step — going at the person's pace and never pushing. Especially important in sexual-health and intimacy work.",
+      "clinical": "SAMHSA (2014) framework: safety, trustworthiness, choice, collaboration, empowerment.",
+      "see_also": ["Window of tolerance"]
+    },
+    {
+      "term": "Demisexual",
+      "category": "identity",
+      "plain": "A person on the asexual spectrum who experiences sexual attraction only after a strong emotional bond has formed. It is an orientation, not a preference or a phase.",
+      "clinical": "Within the asexual spectrum; recognised in affirmative clinical practice.",
+      "see_also": ["Asexual spectrum"]
+    },
+    {
+      "term": "Gray-asexual",
+      "aka": ["gray-ace", "graysexual"],
+      "category": "identity",
+      "plain": "An identity between asexual and allosexual: a person who experiences sexual attraction rarely, weakly, or only under specific conditions. Part of the asexual spectrum.",
+      "clinical": "Within the asexual spectrum.",
+      "see_also": ["Asexual spectrum", "Demisexual"]
+    },
+    {
+      "term": "Aromantic",
+      "aka": ["aro"],
+      "category": "identity",
+      "plain": "Experiencing little or no romantic attraction. Aromantic people may still have sexual attraction, deep friendships, and committed relationships — romantic and sexual orientation are separate.",
+      "clinical": "Distinct from, but often discussed alongside, the asexual spectrum.",
+      "see_also": ["Asexual spectrum"]
+    },
+    {
+      "term": "Intersex",
+      "category": "identity",
+      "plain": "An umbrella term for people born with sex characteristics (chromosomes, hormones, anatomy) that don't fit typical definitions of male or female. Intersex is about bodies, not gender identity or orientation; affirming care avoids unnecessary, non-consensual interventions.",
+      "clinical": "Sometimes described clinically as differences of sex development (DSD); many communities prefer 'intersex'."
+    },
+    {
+      "term": "Non-binary",
+      "aka": ["enby", "NB"],
+      "category": "identity",
+      "plain": "A gender identity that isn't exclusively man or woman — it may be both, neither, or fluid. Non-binary people may or may not seek any medical or social transition; respecting names and pronouns is foundational.",
+      "clinical": "Recognised in WPATH SOC8 gender-diverse care.",
+      "see_also": ["Gender-affirming care"]
+    },
+    {
+      "term": "Polyamory",
+      "category": "relationship",
+      "plain": "The practice of having more than one loving, committed relationship at a time, with everyone's informed consent. A form of consensual non-monogamy focused on emotional as well as sexual connection.",
+      "clinical": "A form of consensual non-monogamy; see Conley et al. (2017).",
+      "see_also": ["Consensual non-monogamy", "Compersion"]
+    },
+    {
+      "term": "Relationship anarchy",
+      "aka": ["RA"],
+      "category": "relationship",
+      "plain": "An approach that rejects fixed hierarchies and rules between relationship types — each connection is defined by the people in it, rather than by whether it's 'romantic', 'sexual', or a 'friendship'.",
+      "clinical": "A relationship philosophy within consensual non-monogamy.",
+      "see_also": ["Consensual non-monogamy"]
+    },
+    {
+      "term": "Compersion",
+      "category": "relationship",
+      "plain": "The warm, happy feeling some people get from seeing a partner enjoy connection with someone else — often described as the opposite of jealousy. Common in (but not exclusive to) consensual non-monogamy.",
+      "clinical": "Studied within consensual non-monogamy research.",
+      "see_also": ["Consensual non-monogamy", "Polyamory"]
+    },
+    {
+      "term": "Kink",
+      "aka": ["BDSM"],
+      "category": "practice",
+      "plain": "Consensual sexual or sensual practices outside the conventional 'norm' — including BDSM (bondage, discipline, dominance/submission, sadomasochism), role-play, and power exchange. Kink-aware care treats these as healthy when consensual, negotiated, and safe.",
+      "clinical": "Kink-aware practice; consensual BDSM is not a disorder (DSM-5-TR distinguishes paraphilias from paraphilic disorders).",
+      "see_also": ["Aftercare", "Affirmative consent"]
+    },
+    {
+      "term": "Aftercare",
+      "category": "practice",
+      "plain": "The care partners give each other after intense sex or a kink scene — reassurance, water, warmth, gentle talk — to ease the come-down and stay emotionally connected. A normal, valued part of many people's intimacy.",
+      "clinical": "Common in kink/BDSM communities; supports emotional safety.",
+      "see_also": ["Kink"]
+    },
+    {
+      "term": "Affirmative consent",
+      "aka": ["enthusiastic consent"],
+      "category": "concept",
+      "plain": "Consent as an ongoing, freely given, clear 'yes' — not the mere absence of 'no'. It can be withdrawn at any time, can't be given while incapacitated, and is checked in throughout, not assumed from past encounters.",
+      "clinical": "Foundational to ethical sexual-health practice and consent education."
     }
   ]
 }
