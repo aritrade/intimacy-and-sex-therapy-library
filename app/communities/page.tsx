@@ -3,6 +3,7 @@ import { topicById, type AffirmingFilter } from "@/lib/help/taxonomy";
 import { FindHelpTabs } from "@/components/help/FindHelpTabs";
 import { HelpSearchForm } from "@/components/help/HelpSearchForm";
 import { HelpResultCard } from "@/components/help/HelpResultCard";
+import { RefreshResults } from "@/components/help/RefreshResults";
 
 export const metadata = {
   title: "Communities · Intimacy & Sex Therapy Library",
@@ -73,9 +74,26 @@ export default async function CommunitiesPage({
       />
 
       <section className="mt-10">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <h2 className="font-serif text-xl text-ink-900">Communities</h2>
           <span className="pill-plum">Public listings</span>
+          {aggregated && aggregated.results.length > 0 && topic && (
+            <div className="ml-auto">
+              <RefreshResults
+                params={{
+                  kind: "communities",
+                  country,
+                  state,
+                  locality,
+                  topic,
+                  scope,
+                  affirming: affirming.length ? affirming.join(",") : undefined,
+                }}
+                fetchedAtMs={aggregated.fetchedAt ? aggregated.fetchedAt.getTime() : null}
+                stale={aggregated.stale}
+              />
+            </div>
+          )}
         </div>
         <p className="mt-1 text-sm text-ink-500">
           In-person meetups, events, and local groups plus online communities from across the web,
@@ -101,9 +119,8 @@ export default async function CommunitiesPage({
               ))}
             </ul>
             <p className="mt-3 text-xs text-ink-400">
-              Showing communities for {topicById(topic)?.label ?? topic}
-              {aggregated.cached ? " · cached" : ""}. Spotted something wrong? Use “Report” on any
-              card.
+              Showing communities for {topicById(topic)?.label ?? topic}. Spotted something wrong?
+              Use “Report” on any card.
             </p>
           </>
         ) : (

@@ -17,7 +17,11 @@ export type FetchOutput = { results: Array<{ ref: string }>; source: string };
 export type CacheResult<T> = {
   results: T[];
   cached: boolean;
+  /** True when served from an expired cache row (stale-while-revalidate). */
+  stale: boolean;
   source: string;
+  /** When the served results were fetched from the providers. */
+  fetchedAt: Date | null;
 };
 
 function normalize(query: Record<string, unknown>): Record<string, unknown> {
@@ -67,7 +71,13 @@ export async function getOrFetch<T extends { ref: string }>({
   if (!process.env.DATABASE_URL) {
     // No DB: skip caching entirely, just fetch live.
     const fresh = await fetcher();
-    return { results: await filterHidden(fresh.results), cached: false, source: fresh.source };
+    return {
+      results: await filterHidden(fresh.results),
+      cached: false,
+      stale: false,
+      source: fresh.source,
+      fetchedAt: new Date(),
+    };
   }
 
   const cacheKey = cacheKeyFor(kind, query);
@@ -76,17 +86,24 @@ export async function getOrFetch<T extends { ref: string }>({
   });
 
   const now = Date.now();
-  const fresh = existing && new Date(existing.expiresAt).getTime() > now;
-  if (existing && fresh && !force) {
+  const isStale = existing ? new Date(existing.expiresAt).getTime() <= now : true;
+
+  // Stale-while-revalidate: when we have ANY cached row and aren't forcing a
+  // refresh, serve it instantly (even if expired). Freshness is restored
+  // on demand via the "Refresh" button (force=true) — see /api/help/refresh.
+  if (existing && !force) {
     return {
       results: await filterHidden(existing.results as T[]),
       cached: true,
+      stale: isStale,
       source: existing.source,
+      fetchedAt: new Date(existing.fetchedAt),
     };
   }
 
   try {
     const out = await fetcher();
+    const fetchedAt = new Date();
     const expiresAt = new Date(now + ttlMs);
     await db
       .insert(helpSearchCache)
@@ -96,28 +113,31 @@ export async function getOrFetch<T extends { ref: string }>({
         query: normalize(query),
         results: out.results,
         source: out.source,
-        fetchedAt: new Date(),
+        fetchedAt,
         expiresAt,
       })
       .onConflictDoUpdate({
         target: helpSearchCache.cacheKey,
-        set: {
-          results: out.results,
-          source: out.source,
-          fetchedAt: new Date(),
-          expiresAt,
-        },
+        set: { results: out.results, source: out.source, fetchedAt, expiresAt },
       });
-    return { results: await filterHidden(out.results), cached: false, source: out.source };
+    return {
+      results: await filterHidden(out.results),
+      cached: false,
+      stale: false,
+      source: out.source,
+      fetchedAt,
+    };
   } catch {
     // Refetch failed — serve a stale row if we have one rather than nothing.
     if (existing) {
       return {
         results: await filterHidden(existing.results as T[]),
         cached: true,
+        stale: isStale,
         source: existing.source,
+        fetchedAt: new Date(existing.fetchedAt),
       };
     }
-    return { results: [], cached: false, source: "none" };
+    return { results: [], cached: false, stale: false, source: "none", fetchedAt: null };
   }
 }

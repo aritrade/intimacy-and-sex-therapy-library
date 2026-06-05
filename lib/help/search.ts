@@ -53,6 +53,8 @@ export type ClinicianSearchInput = {
   locality?: string;
   specialtyId: string;
   affirming?: AffirmingFilter[];
+  /** Bypass cache and re-fetch live (used by the Refresh button). */
+  force?: boolean;
 };
 
 export async function searchClinicians(input: ClinicianSearchInput) {
@@ -64,6 +66,7 @@ export async function searchClinicians(input: ClinicianSearchInput) {
 
   return getOrFetch<HelpResult>({
     kind: "clinicians",
+    force: input.force,
     query: {
       country: input.country,
       state: input.state ?? "",
@@ -119,6 +122,8 @@ export type CommunitySearchInput = {
   topicId: string;
   scope: CommunityScope;
   affirming?: AffirmingFilter[];
+  /** Bypass cache and re-fetch live (used by the Refresh button). */
+  force?: boolean;
 };
 
 export async function searchCommunities(input: CommunitySearchInput) {
@@ -131,6 +136,7 @@ export async function searchCommunities(input: CommunitySearchInput) {
 
   return getOrFetch<HelpResult>({
     kind: "communities",
+    force: input.force,
     query: {
       country: input.country,
       state: input.state ?? "",

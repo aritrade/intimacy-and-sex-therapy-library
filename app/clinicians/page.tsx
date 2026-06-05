@@ -4,6 +4,7 @@ import { specialtyById, type AffirmingFilter } from "@/lib/help/taxonomy";
 import { FindHelpTabs } from "@/components/help/FindHelpTabs";
 import { HelpSearchForm } from "@/components/help/HelpSearchForm";
 import { HelpResultCard } from "@/components/help/HelpResultCard";
+import { RefreshResults } from "@/components/help/RefreshResults";
 
 export const metadata = {
   title: "Find a clinician · Intimacy & Sex Therapy Library",
@@ -110,9 +111,25 @@ export default async function CliniciansPage({
 
       {/* Aggregated public tier */}
       <section className="mt-10">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <h2 className="font-serif text-xl text-ink-900">More options near you</h2>
           <span className="pill-plum">Public listings</span>
+          {aggregated && aggregated.results.length > 0 && specialty && (
+            <div className="ml-auto">
+              <RefreshResults
+                params={{
+                  kind: "clinicians",
+                  country,
+                  state,
+                  locality,
+                  specialty,
+                  affirming: affirming.length ? affirming.join(",") : undefined,
+                }}
+                fetchedAtMs={aggregated.fetchedAt ? aggregated.fetchedAt.getTime() : null}
+                stale={aggregated.stale}
+              />
+            </div>
+          )}
         </div>
         <p className="mt-1 text-sm text-ink-500">
           A web-wide search of public listings and reputable directories, ranked for relevance and
@@ -139,9 +156,8 @@ export default async function CliniciansPage({
               ))}
             </ul>
             <p className="mt-3 text-xs text-ink-400">
-              Showing public listings for {specialtyById(specialty)?.label ?? specialty}
-              {aggregated.cached ? " · cached" : ""}. Spotted something wrong? Use “Report” on any
-              card.
+              Showing public listings for {specialtyById(specialty)?.label ?? specialty}. Spotted
+              something wrong? Use “Report” on any card.
             </p>
           </>
         ) : (
