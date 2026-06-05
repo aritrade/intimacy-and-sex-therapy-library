@@ -14,6 +14,13 @@ import { helpResultFlags, helpSearchCache } from "@/lib/db/schema";
 
 export type FetchOutput = { results: Array<{ ref: string }>; source: string };
 
+/**
+ * Absolute staleness cap. We serve expired (stale) rows instantly for speed,
+ * but never anything older than this — once a row crosses this age, the next
+ * request blocks for a live re-fetch so results can't silently rot.
+ */
+const MAX_STALE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+
 export type CacheResult<T> = {
   results: T[];
   cached: boolean;
@@ -87,11 +94,15 @@ export async function getOrFetch<T extends { ref: string }>({
 
   const now = Date.now();
   const isStale = existing ? new Date(existing.expiresAt).getTime() <= now : true;
+  const tooOld = existing
+    ? now - new Date(existing.fetchedAt).getTime() > MAX_STALE_MS
+    : true;
 
-  // Stale-while-revalidate: when we have ANY cached row and aren't forcing a
-  // refresh, serve it instantly (even if expired). Freshness is restored
-  // on demand via the "Refresh" button (force=true) — see /api/help/refresh.
-  if (existing && !force) {
+  // Stale-while-revalidate: when we have a cached row that isn't past the
+  // absolute staleness cap and aren't forcing a refresh, serve it instantly
+  // (even if expired). Rows older than MAX_STALE_MS fall through to a live
+  // re-fetch below so nothing is ever served too stale.
+  if (existing && !force && !tooOld) {
     return {
       results: await filterHidden(existing.results as T[]),
       cached: true,
