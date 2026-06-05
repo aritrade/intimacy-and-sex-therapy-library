@@ -69,7 +69,7 @@ export default async function CommunitiesPage({
       <HelpSearchForm
         mode="community"
         initial={{ country, state, locality, topic, scope, affirming }}
-        localEnabled={agg.places}
+        localEnabled={agg.any}
       />
 
       <section className="mt-10">
@@ -78,8 +78,9 @@ export default async function CommunitiesPage({
           <span className="pill-plum">Public listings</span>
         </div>
         <p className="mt-1 text-sm text-ink-500">
-          Local groups via Google Maps and online communities from across the web, ranked for
-          activity, reputation, and inclusivity. Not endorsed by us — explore at your own comfort.
+          In-person meetups, events, and local groups plus online communities from across the web,
+          ranked for activity, reputation, and inclusivity. Not endorsed by us — explore at your own
+          comfort.
         </p>
 
         {!agg.any ? (

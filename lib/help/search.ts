@@ -145,17 +145,29 @@ export async function searchCommunities(input: CommunitySearchInput) {
       const wantLocal = input.scope === "local" || input.scope === "both";
       const wantOnline = input.scope === "online" || input.scope === "both";
 
-      if (wantLocal && placesConfigured()) {
-        const local = await placesTextSearch({
-          query: `${affPrefix}${term} support group in ${location}`,
-          limit: 10,
-          detailsFor: 6,
-        });
-        hits.push(...local);
+      if (wantLocal) {
+        // Geocoded local groups (when Google Places is configured)...
+        if (placesConfigured()) {
+          const localPlaces = await placesTextSearch({
+            query: `${affPrefix}${term} support group in ${location}`,
+            limit: 10,
+            detailsFor: 6,
+          });
+          hits.push(...localPlaces);
+        }
+        // ...plus in-person meetups, events, and local chapters via web search
+        // (Meetup, Eventbrite, local org pages) — no Google Maps required.
+        if (webSearchConfigured()) {
+          const localWeb = await webSearch({
+            query: `${affPrefix}${term} in ${location} meetup OR support group OR event OR community center`,
+            count: 10,
+          });
+          hits.push(...localWeb);
+        }
       }
       if (wantOnline && webSearchConfigured()) {
         const online = await webSearch({
-          query: `${affPrefix}${term} reddit OR facebook group OR discord OR meetup`,
+          query: `${affPrefix}${term} community reddit OR facebook group OR discord OR forum`,
           count: 12,
         });
         hits.push(...online);
@@ -168,8 +180,8 @@ export async function searchCommunities(input: CommunitySearchInput) {
         affirming: affirmingLabels(affirming),
       });
       const source =
-        wantLocal && wantOnline ? "mixed" : wantLocal ? "places" : "web";
-      return { results, source: hits.length ? source : "none" };
+        hits.length === 0 ? "none" : wantLocal && wantOnline ? "mixed" : wantLocal ? "local" : "web";
+      return { results, source };
     },
   });
 }
