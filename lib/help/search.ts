@@ -73,20 +73,41 @@ export async function searchClinicians(input: ClinicianSearchInput) {
     },
     ttlMs: CLINICIAN_TTL,
     fetcher: async () => {
-      if (!placesConfigured()) return { results: [], source: "none" };
       const prefix = affTerms.length ? `${affTerms.join(" ")} ` : "";
-      const hits = await placesTextSearch({
-        query: `${prefix}${term} in ${location}`,
-        limit: 14,
-        detailsFor: 10,
-      });
+      const hits: Array<PlaceHit | WebHit> = [];
+      let source = "none";
+
+      // Google Places gives geocoded results with ratings when configured.
+      if (placesConfigured()) {
+        const places = await placesTextSearch({
+          query: `${prefix}${term} in ${location}`,
+          limit: 14,
+          detailsFor: 10,
+        });
+        hits.push(...places);
+        source = "places";
+      }
+
+      // General web search ("global Google search") finds clinicians, clinics,
+      // and reputable directories without needing Google Maps.
+      if (webSearchConfigured()) {
+        const web = await webSearch({
+          query: `${prefix}${term} in ${location} clinic OR appointment OR practice`,
+          count: 12,
+        });
+        hits.push(...web);
+        source = source === "places" ? "mixed" : "web";
+      }
+
+      if (hits.length === 0) return { results: [], source: "none" };
+
       const results = await rankResults(hits, {
         kind: "clinician",
         intent: [specialty?.label ?? term, ...affirmingLabels(affirming)].join(", "),
         location,
         affirming: affirmingLabels(affirming),
       });
-      return { results, source: "places" };
+      return { results, source };
     },
   });
 }

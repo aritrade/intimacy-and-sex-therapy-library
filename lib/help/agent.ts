@@ -127,7 +127,10 @@ HARD RULES:
     exclude or down-rank a result because of orientation, gender identity,
     relationship structure, or disability. Treat affirming/inclusive signals as
     a POSITIVE ranking factor.
-  - Prefer credible, active, well-reviewed results; drop spam, ads, and listicles.
+  - Prefer credible, active, well-reviewed results; drop spam and ads.
+  - For clinicians, reputable directory profiles (recognised psychology /
+    therapy / sexual-health directories and clinic pages) are valid, useful
+    results — keep them. Only drop low-quality SEO "top N" listicles.
   - No moralising, no pathologising. Neutral, supportive tone.`;
 
 export async function rankResults(
