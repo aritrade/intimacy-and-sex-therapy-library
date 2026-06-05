@@ -38,16 +38,19 @@ export type IngestSummary = {
   embeddingsRequested: boolean;
 };
 
-export async function ingestMany(records: IngestRecord[]): Promise<IngestSummary> {
+export async function ingestMany(
+  records: IngestRecord[],
+  opts: { skipEmbeddings?: boolean } = {},
+): Promise<IngestSummary> {
   const summary: IngestSummary = {
     upserted: 0,
     skipped: [],
-    embeddingsRequested: embeddingsEnabled(),
+    embeddingsRequested: embeddingsEnabled() && !opts.skipEmbeddings,
   };
 
   for (const r of records) {
     try {
-      await ingestOne(r);
+      await ingestOne(r, opts);
       summary.upserted += 1;
     } catch (err) {
       summary.skipped.push({
@@ -59,7 +62,7 @@ export async function ingestMany(records: IngestRecord[]): Promise<IngestSummary
   return summary;
 }
 
-async function ingestOne(r: IngestRecord) {
+async function ingestOne(r: IngestRecord, opts: { skipEmbeddings?: boolean } = {}) {
   const src = await db.query.sources.findFirst({
     where: eq(sources.slug, r.sourceSlug),
   });
@@ -113,10 +116,13 @@ async function ingestOne(r: IngestRecord) {
   });
   await applyTags(resource.id, tagged);
 
-  // Chunk + embed only if we're allowed to store full text.
+  // Chunk + embed only if we're allowed to store full text. Embedding can be
+  // skipped (e.g. the Discover flywheel) so the daily backfill action embeds
+  // later under Gemini's rate limits.
   if (fullTextOk && bodyForRag.length > 0) {
     const ch = chunkText({ text: bodyForRag });
-    const embed = ch.length > 0 ? await embedBatch(ch.map((c) => c.content)) : null;
+    const embed =
+      !opts.skipEmbeddings && ch.length > 0 ? await embedBatch(ch.map((c) => c.content)) : null;
 
     for (let i = 0; i < ch.length; i++) {
       await db.insert(chunks).values({

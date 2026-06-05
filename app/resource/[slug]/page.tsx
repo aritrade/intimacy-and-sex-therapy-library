@@ -1,9 +1,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getResourceBySlug, listCatalog } from "@/lib/db/queries";
+import { getRelatedResources, getResourceBySlug } from "@/lib/db/queries";
 import { MediaPlayer } from "@/components/MediaPlayer";
-import { ResourceCard } from "@/components/ResourceCard";
 import { TrackResourceView } from "@/components/TrackResourceView";
+import { RelatedReading } from "@/components/library/RelatedReading";
+import { toLibItem } from "@/lib/library/to-lib-item";
 import { buildLibraryDeepLinks } from "@/lib/library/deep-links";
 import { readingMinutes, resolveEmbed } from "@/lib/media/embed";
 
@@ -47,13 +48,9 @@ export default async function ResourcePage({
       })
     : [];
 
-  // Related shelf: 4 other published resources sharing at least one topic tag.
-  const topicTag = r.tagNames.find((t) =>
-    !["beginner", "intermediate", "advanced", "psychoeducation", "general"].includes(t)
-  );
-  const related = topicTag
-    ? (await listCatalog({ topic: topicTag, limit: 5 })).filter((x) => x.id !== r.id).slice(0, 4)
-    : [];
+  // "Go deeper": resources most similar by chunk-embedding (with a shared-tag
+  // fallback when embeddings aren't available yet).
+  const related = (await getRelatedResources(r.id, 4)).map(toLibItem);
 
   // Synthesise structured panels from data we have. Honest about what these are.
   const whoFor: string[] = [];
@@ -299,18 +296,9 @@ export default async function ResourcePage({
       </div>
 
       {related.length > 0 && (
-        <section className="mt-12 pt-8 border-t border-border">
-          <h2 className="font-serif text-2xl text-ink-900 mb-4">
-            Continue with related resources
-          </h2>
-          <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {related.map((it) => (
-              <li key={it.id}>
-                <ResourceCard item={it} />
-              </li>
-            ))}
-          </ul>
-        </section>
+        <div className="mt-12 border-t border-border pt-8">
+          <RelatedReading items={related} title="Go deeper" />
+        </div>
       )}
     </article>
   );

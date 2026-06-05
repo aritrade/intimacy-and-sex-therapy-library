@@ -212,6 +212,47 @@ disability, and must never exclude or down-rank on those grounds.
 
 ---
 
+### 11. Library & Discover hub (recommended)
+
+The **Library** (`/library`) surfaces every published, document-shaped resource
+(articles, books, guidelines, worksheets, videos) with read-time, inline
+reading for open-access full text, curated **Reading journeys** (collections),
+browse-by-topic shelves, a daily pick, and localStorage save / reading-progress
+(no auth, no PII). **Discover** (`/library/discover?q=`) researches any topic
+across our corpus + live scholarly sources and returns a cited Topic Brief plus
+a ranked reading list.
+
+Setup:
+
+1. **Fill the corpus.** Run the open-access seeder, then embed:
+
+   ```bash
+   npm run seed:corpus        # ingests Europe PMC OA full text (no embedding)
+   npm run backfill:embeddings  # embeds NULL chunks under Gemini's rate limit
+   ```
+
+   The daily `backfill-embeddings` GitHub Action keeps embeddings current, so
+   in steady state you only need `npm run seed:corpus` to grow coverage. Items
+   that yield chunks are auto-published.
+
+2. **Discover sources need no extra keys.** Europe PMC, OpenAlex, and Open
+   Library are keyless and degrade gracefully. Discover reuses the LLM provider
+   (section 2), Gemini embeddings, and `TAVILY_API_KEY` (for explainers). With
+   no LLM, Discover still returns a curated list of real sources (no synthesized
+   brief). `GOOGLE_BOOKS_API_KEY` is optional and not required.
+
+3. **Flywheel.** When Discover finds new open-access Europe PMC articles, up to
+   3 per (re)compute are auto-ingested (full text → chunks → auto-published);
+   embeddings follow via the daily backfill action. Dedup is by canonical URL.
+
+4. **Caching & freshness.** Discover briefs cache in `help_search_cache`
+   (`kind='discover'`) for 14 days with stale-while-revalidate, a **Refresh**
+   button (forces a live re-research), and a 30-day absolute staleness cap.
+   Per-article "Key takeaways" cache for 120 days. **Report** reuses
+   `help_result_flags` → `/admin/help-flags`.
+
+---
+
 ## Day 0 — Set Vercel env vars
 
 Paste this whole block into the Vercel project's **Environment

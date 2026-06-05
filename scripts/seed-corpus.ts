@@ -79,6 +79,39 @@ const TOPIC_QUERIES: Record<string, string[]> = {
   "coming-out": ["coming out later life identity", "sexual identity disclosure midlife"],
   "disability-and-intimacy": ["disability sexuality intimacy", "sexual health disability"],
   attachment: ["attachment style sexual relationship", "adult attachment intimacy"],
+
+  // --- Identity spectrum (expanded) ---
+  "aromantic-spectrum": ["aromantic identity wellbeing", "aromanticism relationships"],
+  "demisexuality": ["demisexual identity", "sexual attraction asexual spectrum"],
+  "gray-asexuality": ["gray asexual identity", "asexuality spectrum diversity"],
+  "trans-affirming-care": [
+    "gender affirming care wellbeing",
+    "transgender sexual health affirming",
+    "non-binary identity sexual health",
+  ],
+  intersex: ["intersex health psychosocial", "intersex affirming care wellbeing"],
+  "bisexual-pansexual": ["bisexual minority stress wellbeing", "bisexual health relationships"],
+  "queer-relationships": ["same-sex relationship satisfaction", "queer couples relationship wellbeing"],
+
+  // --- Relationship structures (expanded) ---
+  polyamory: ["polyamory relationship quality", "consensual non-monogamy jealousy"],
+  "relationship-anarchy": ["relationship anarchy non-monogamy", "non-hierarchical relationships"],
+
+  // --- Underserved populations & life stages (expanded) ---
+  "autism-and-intimacy": ["autism sexuality relationships", "autistic adults intimacy"],
+  "adhd-and-desire": ["ADHD sexual functioning relationships", "ADHD intimacy couples"],
+  "aging-and-sexuality": ["sexuality older adults wellbeing", "sexual health aging late life"],
+  "cancer-and-intimacy": ["cancer survivorship sexual function", "sexual rehabilitation cancer"],
+  "chronic-illness-intimacy": ["chronic illness sexual function couples", "diabetes sexual dysfunction"],
+
+  // --- Practice & themes (expanded) ---
+  "kink-aware-practice": ["kink aware therapy BDSM wellbeing", "consensual BDSM psychological wellbeing"],
+  "body-image-intimacy": ["body image sexual satisfaction", "body image women sexual function"],
+  "sexual-self-esteem": ["sexual self-esteem wellbeing", "sexual confidence intervention"],
+  "compulsive-sexual-behaviour": [
+    "compulsive sexual behaviour disorder treatment",
+    "out of control sexual behaviour therapy",
+  ],
 };
 
 function flag(name: string, fallback?: string): string | undefined {

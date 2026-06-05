@@ -6,7 +6,7 @@
  * an empty result, so the public site renders even before DATABASE_URL is set.
  */
 
-import { and, desc, eq, inArray, isNotNull, or, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "./client";
 import {
   chunks,
@@ -246,17 +246,31 @@ export async function listFeaturedVideos(limit = 6): Promise<CatalogItem[]> {
  * for copyrighted books. Listed here so callers don't have to know that
  * distinction up-front.
  */
-// Resource kinds that belong in the Virtual Library. `report` is intentionally
-// omitted — it isn't a value in the resource_kind enum (so it can never match).
-const LIBRARY_KINDS = ["book", "guideline", "worksheet"] as const;
+/**
+ * Library item = a CatalogItem enriched with reading metadata so the Library
+ * hub can show read-time, mark which items are readable inline on-platform
+ * (open-access full text we host as chunks, or a hosted PDF), and sort by
+ * recency.
+ */
+export type LibraryItem = CatalogItem & {
+  publishedAt: Date | null;
+  createdAt: Date;
+  readTimeMin: number | null;
+  readableInline: boolean;
+};
 
-export async function listLibraryItems(): Promise<CatalogItem[]> {
+/** Rough reading time from approximate token count (~0.75 words/token, 220 wpm). */
+function readTimeFromTokens(tokens: number): number | null {
+  if (tokens <= 0) return null;
+  return Math.max(1, Math.round((tokens * 0.75) / 220));
+}
+
+export async function listLibraryItems(): Promise<LibraryItem[]> {
   if (!process.env.DATABASE_URL) return [];
 
-  // Query library items directly by kind (plus any hosted open-access PDF)
-  // rather than filtering a capped catalog page. The catalog is dominated by
-  // hundreds of articles, so a LIMIT-based approach silently dropped the
-  // handful of books/guidelines/worksheets that rank lower by publishedAt.
+  // The Library surfaces ALL published, document-shaped resources — articles,
+  // books, guidelines, worksheets, videos — not just a few kinds. We query
+  // directly (not via a capped catalog page) so nothing is silently dropped.
   const rows = await db
     .select({
       id: resources.id,
@@ -268,32 +282,39 @@ export async function listLibraryItems(): Promise<CatalogItem[]> {
       externalUrl: resources.externalUrl,
       pdfBlobUrl: resources.pdfBlobUrl,
       summary: resources.summary,
+      fullTextAvailable: resources.fullTextAvailable,
+      publishedAt: resources.publishedAt,
+      createdAt: resources.createdAt,
       sourceSlug: sources.slug,
       sourceName: sources.name,
       sourceTier: sources.trustTier,
     })
     .from(resources)
     .innerJoin(sources, eq(resources.sourceId, sources.id))
-    .where(
-      and(
-        eq(resources.isPublished, true),
-        or(
-          inArray(resources.kind, LIBRARY_KINDS as unknown as never[]),
-          isNotNull(resources.pdfBlobUrl),
-        ),
-      ),
-    )
+    .where(eq(resources.isPublished, true))
     .orderBy(desc(resources.publishedAt))
-    .limit(300);
+    .limit(500);
 
   if (rows.length === 0) return [];
 
   const ids = rows.map((r) => r.id);
-  const tagRows = await db
-    .select({ resourceId: resourceTags.resourceId, name: tags.name })
-    .from(resourceTags)
-    .innerJoin(tags, eq(resourceTags.tagId, tags.id))
-    .where(inArray(resourceTags.resourceId, ids));
+
+  const [tagRows, chunkAgg] = await Promise.all([
+    db
+      .select({ resourceId: resourceTags.resourceId, name: tags.name })
+      .from(resourceTags)
+      .innerJoin(tags, eq(resourceTags.tagId, tags.id))
+      .where(inArray(resourceTags.resourceId, ids)),
+    db
+      .select({
+        resourceId: chunks.resourceId,
+        n: sql<number>`count(*)::int`,
+        toks: sql<number>`coalesce(sum(${chunks.tokens}), 0)::int`,
+      })
+      .from(chunks)
+      .where(inArray(chunks.resourceId, ids))
+      .groupBy(chunks.resourceId),
+  ]);
 
   const tagsByResource = new Map<string, string[]>();
   for (const t of tagRows) {
@@ -301,20 +322,257 @@ export async function listLibraryItems(): Promise<CatalogItem[]> {
     arr.push(t.name);
     tagsByResource.set(t.resourceId, arr);
   }
+  const aggByResource = new Map(chunkAgg.map((a) => [a.resourceId, a]));
 
-  return rows.map((r) => ({
+  return rows.map((r) => {
+    const agg = aggByResource.get(r.id);
+    const hasChunks = (agg?.n ?? 0) > 0;
+    const readableInline = !!r.pdfBlobUrl || (r.fullTextAvailable && hasChunks);
+    return {
+      id: r.id,
+      slug: r.slug,
+      title: r.title,
+      authors: (r.authors as string[]) ?? [],
+      language: r.language,
+      kind: r.kind,
+      externalUrl: r.externalUrl,
+      pdfBlobUrl: r.pdfBlobUrl,
+      summary: r.summary,
+      source: { slug: r.sourceSlug, name: r.sourceName, tier: r.sourceTier },
+      tagNames: tagsByResource.get(r.id) ?? [],
+      publishedAt: r.publishedAt,
+      createdAt: r.createdAt,
+      readTimeMin: readableInline ? readTimeFromTokens(agg?.toks ?? 0) : null,
+      readableInline,
+    };
+  });
+}
+
+/**
+ * Full document for the inline reader: metadata + reconstructed body text from
+ * stored open-access chunks (ordered). Returns null when the resource isn't
+ * readable inline (no PDF and no open-access full text we host).
+ */
+export type LibraryReaderDoc = {
+  id: string;
+  slug: string;
+  title: string;
+  authors: string[];
+  kind: string;
+  license: string;
+  externalUrl: string;
+  pdfBlobUrl: string | null;
+  summary: string | null;
+  sourceName: string;
+  publishedAt: Date | null;
+  paragraphs: string[];
+  readTimeMin: number | null;
+  tagNames: string[];
+};
+
+export async function getLibraryReaderDoc(id: string): Promise<LibraryReaderDoc | null> {
+  if (!process.env.DATABASE_URL) return null;
+
+  const row = await db
+    .select({
+      id: resources.id,
+      slug: resources.slug,
+      title: resources.title,
+      authors: resources.authors,
+      kind: resources.kind,
+      license: resources.license,
+      externalUrl: resources.externalUrl,
+      pdfBlobUrl: resources.pdfBlobUrl,
+      summary: resources.summary,
+      fullTextAvailable: resources.fullTextAvailable,
+      publishedAt: resources.publishedAt,
+      sourceName: sources.name,
+    })
+    .from(resources)
+    .innerJoin(sources, eq(resources.sourceId, sources.id))
+    .where(and(eq(resources.id, id), eq(resources.isPublished, true)))
+    .limit(1);
+
+  if (row.length === 0) return null;
+  const r = row[0];
+
+  const tagRows = await db
+    .select({ name: tags.name })
+    .from(resourceTags)
+    .innerJoin(tags, eq(resourceTags.tagId, tags.id))
+    .where(eq(resourceTags.resourceId, id));
+
+  let paragraphs: string[] = [];
+  let tokens = 0;
+  if (r.fullTextAvailable) {
+    const body = await db
+      .select({ content: chunks.content, tokens: chunks.tokens })
+      .from(chunks)
+      .where(eq(chunks.resourceId, id))
+      .orderBy(chunks.ord);
+    paragraphs = body.flatMap((c) =>
+      c.content.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean),
+    );
+    tokens = body.reduce((sum, c) => sum + (c.tokens ?? 0), 0);
+  }
+
+  return {
     id: r.id,
     slug: r.slug,
     title: r.title,
     authors: (r.authors as string[]) ?? [],
-    language: r.language,
     kind: r.kind,
+    license: r.license,
     externalUrl: r.externalUrl,
     pdfBlobUrl: r.pdfBlobUrl,
     summary: r.summary,
-    source: { slug: r.sourceSlug, name: r.sourceName, tier: r.sourceTier },
-    tagNames: tagsByResource.get(r.id) ?? [],
-  }));
+    sourceName: r.sourceName,
+    publishedAt: r.publishedAt,
+    paragraphs,
+    readTimeMin: readTimeFromTokens(tokens),
+    tagNames: tagRows.map((t) => t.name),
+  };
+}
+
+/**
+ * Enrich a set of resource ids into LibraryItems, preserving the order of
+ * `ids`. Shared by related-reading (vector / tag candidates come back as an
+ * ordered id list that we then hydrate).
+ */
+async function enrichResourceIds(ids: string[]): Promise<LibraryItem[]> {
+  if (ids.length === 0) return [];
+  const rows = await db
+    .select({
+      id: resources.id,
+      slug: resources.slug,
+      title: resources.title,
+      authors: resources.authors,
+      language: resources.language,
+      kind: resources.kind,
+      externalUrl: resources.externalUrl,
+      pdfBlobUrl: resources.pdfBlobUrl,
+      summary: resources.summary,
+      fullTextAvailable: resources.fullTextAvailable,
+      publishedAt: resources.publishedAt,
+      createdAt: resources.createdAt,
+      sourceSlug: sources.slug,
+      sourceName: sources.name,
+      sourceTier: sources.trustTier,
+    })
+    .from(resources)
+    .innerJoin(sources, eq(resources.sourceId, sources.id))
+    .where(and(eq(resources.isPublished, true), inArray(resources.id, ids)));
+
+  const [tagRows, chunkAgg] = await Promise.all([
+    db
+      .select({ resourceId: resourceTags.resourceId, name: tags.name })
+      .from(resourceTags)
+      .innerJoin(tags, eq(resourceTags.tagId, tags.id))
+      .where(inArray(resourceTags.resourceId, ids)),
+    db
+      .select({
+        resourceId: chunks.resourceId,
+        n: sql<number>`count(*)::int`,
+        toks: sql<number>`coalesce(sum(${chunks.tokens}), 0)::int`,
+      })
+      .from(chunks)
+      .where(inArray(chunks.resourceId, ids))
+      .groupBy(chunks.resourceId),
+  ]);
+
+  const tagsByResource = new Map<string, string[]>();
+  for (const t of tagRows) {
+    const arr = tagsByResource.get(t.resourceId) ?? [];
+    arr.push(t.name);
+    tagsByResource.set(t.resourceId, arr);
+  }
+  const aggByResource = new Map(chunkAgg.map((a) => [a.resourceId, a]));
+  const order = new Map(ids.map((id, i) => [id, i]));
+
+  return rows
+    .map((r) => {
+      const agg = aggByResource.get(r.id);
+      const hasChunks = (agg?.n ?? 0) > 0;
+      const readableInline = !!r.pdfBlobUrl || (r.fullTextAvailable && hasChunks);
+      return {
+        id: r.id,
+        slug: r.slug,
+        title: r.title,
+        authors: (r.authors as string[]) ?? [],
+        language: r.language,
+        kind: r.kind,
+        externalUrl: r.externalUrl,
+        pdfBlobUrl: r.pdfBlobUrl,
+        summary: r.summary,
+        source: { slug: r.sourceSlug, name: r.sourceName, tier: r.sourceTier },
+        tagNames: tagsByResource.get(r.id) ?? [],
+        publishedAt: r.publishedAt,
+        createdAt: r.createdAt,
+        readTimeMin: readableInline ? readTimeFromTokens(agg?.toks ?? 0) : null,
+        readableInline,
+      } satisfies LibraryItem;
+    })
+    .sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
+}
+
+/**
+ * "Go deeper" related reading. Finds resources most similar to `resourceId`
+ * via chunk-embedding cosine distance (pgvector). When embeddings aren't
+ * available yet (e.g. freshly seeded, awaiting the embeddings backfill), it
+ * falls back to shared-topic-tag overlap so the rail is never empty.
+ */
+export async function getRelatedResources(
+  resourceId: string,
+  limit = 6,
+): Promise<LibraryItem[]> {
+  if (!process.env.DATABASE_URL) return [];
+
+  let ids: string[] = [];
+
+  // Vector similarity: nearest *other* resources to this one's leading chunks.
+  // Bounded to the first few source chunks to keep the cross-join cheap.
+  try {
+    const rows = (await db.execute(sql`
+      SELECT c2.resource_id::text AS id, min(c1.embedding <=> c2.embedding) AS dist
+      FROM chunks c1
+      JOIN chunks c2 ON c2.resource_id <> c1.resource_id
+      JOIN resources r2 ON r2.id = c2.resource_id AND r2.is_published = TRUE
+      WHERE c1.resource_id = ${resourceId}::uuid
+        AND c1.ord < 4
+        AND c1.embedding IS NOT NULL
+        AND c2.embedding IS NOT NULL
+      GROUP BY c2.resource_id
+      ORDER BY dist ASC
+      LIMIT ${limit}
+    `)) as unknown as Array<{ id: string }>;
+    ids = rows.map((r) => r.id);
+  } catch {
+    ids = [];
+  }
+
+  // Fallback: shared topic-tag overlap.
+  if (ids.length === 0) {
+    const tagRows = await db
+      .select({ tagId: resourceTags.tagId })
+      .from(resourceTags)
+      .where(eq(resourceTags.resourceId, resourceId));
+    const tagIds = tagRows.map((t) => t.tagId);
+    if (tagIds.length > 0) {
+      const overlap = (await db.execute(sql`
+        SELECT rt.resource_id::text AS id, count(*)::int AS shared
+        FROM resource_tags rt
+        JOIN resources r ON r.id = rt.resource_id AND r.is_published = TRUE
+        WHERE rt.tag_id IN (${sql.join(tagIds.map((t) => sql`${t}::uuid`), sql`, `)})
+          AND rt.resource_id <> ${resourceId}::uuid
+        GROUP BY rt.resource_id
+        ORDER BY shared DESC
+        LIMIT ${limit}
+      `)) as unknown as Array<{ id: string }>;
+      ids = overlap.map((r) => r.id);
+    }
+  }
+
+  return enrichResourceIds(ids);
 }
 
 /**
