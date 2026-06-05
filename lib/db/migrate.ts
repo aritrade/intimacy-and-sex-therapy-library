@@ -25,6 +25,7 @@ async function main() {
     ["content_drafts.archived_at column", "0007_archive_drafts.sql"],
     ["email_subscribers table", "0008_email_subscribers.sql"],
     ["page_views table", "0009_page_views.sql"],
+    ["help search cache + flags", "0010_help_search.sql"],
   ] as const;
 
   for (const [label, file] of handWritten) {

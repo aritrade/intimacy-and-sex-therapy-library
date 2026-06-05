@@ -321,6 +321,12 @@ export default async function AdminHome() {
               Promote clinicians, editors, and admins.
             </p>
           </Link>
+          <Link href="/admin/help-flags" className="card card-hover p-5 block">
+            <h3 className="font-serif text-base text-ink-900">Help reports</h3>
+            <p className="mt-2 text-sm text-ink-600">
+              Review and hide reported Find-help listings and communities.
+            </p>
+          </Link>
           <Link href="/about/model" className="card card-hover p-5 block">
             <h3 className="font-serif text-base text-ink-900">Model card</h3>
             <p className="mt-2 text-sm text-ink-600">

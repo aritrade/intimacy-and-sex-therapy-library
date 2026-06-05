@@ -994,3 +994,51 @@ export const pageViews = pgTable(
     byPath: index("page_views_path_idx").on(t.path),
   }),
 );
+
+// ---------------------------------------------------------------------------
+// Find Help hub: aggregated search cache + moderation flags
+// ---------------------------------------------------------------------------
+
+/**
+ * Cache for aggregated (Google Places + web-search) clinician / community
+ * results. Keyed by a hash of the normalized query (no user identifiers). Rows
+ * are served while `expires_at` is in the future, then refreshed on demand.
+ */
+export const helpSearchCache = pgTable(
+  "help_search_cache",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    cacheKey: text("cache_key").notNull().unique(),
+    kind: varchar("kind", { length: 16 }).notNull(),
+    query: jsonb("query").$type<Record<string, unknown>>().notNull(),
+    results: jsonb("results").$type<unknown[]>().notNull().default(sql`'[]'::jsonb`),
+    source: varchar("source", { length: 32 }).notNull().default("mixed"),
+    fetchedAt: timestamp("fetched_at", { withTimezone: true }).defaultNow().notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  },
+  (t) => ({
+    byKind: index("help_cache_kind_idx").on(t.kind),
+    byExpires: index("help_cache_expires_idx").on(t.expiresAt),
+  }),
+);
+
+/**
+ * User-submitted "Report" on an aggregated result. An admin can set
+ * `hidden=true` to suppress a result globally (consistent with the
+ * curator-reviewed ethos). `result_ref` is a stable id (place_id or hashed url).
+ */
+export const helpResultFlags = pgTable(
+  "help_result_flags",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    cacheKey: text("cache_key"),
+    resultRef: text("result_ref").notNull(),
+    reason: varchar("reason", { length: 48 }),
+    hidden: boolean("hidden").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    byRef: index("help_flags_ref_idx").on(t.resultRef),
+    byHidden: index("help_flags_hidden_idx").on(t.hidden),
+  }),
+);

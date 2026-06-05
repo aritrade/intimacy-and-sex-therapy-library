@@ -182,6 +182,34 @@ opt-in, a one-click `List-Unsubscribe` header, a recognizable From name, and
 low volume. A cheap custom domain (then verify the *domain* identity in SES
 and enable DKIM) is the durable fix.
 
+### 10. Provision Find Help search (optional, recommended)
+
+The **Find help** hub (`/clinicians` + `/communities`) layers an inclusive,
+AI-ranked search of *public* listings on top of the verified clinician
+directory. It uses official APIs only — never SERP scraping — and caches
+results in `help_search_cache` (21d for clinicians, 7d for communities). Every
+aggregated result carries a "not verified by us" disclaimer and a **Report**
+button that feeds `/admin/help-flags`.
+
+All keys are **optional**: with none set, the hub shows only the verified
+directory and the aggregated sections render a friendly "not configured" note
+(no errors).
+
+1. **Google Places** (clinicians + local groups + locality autocomplete):
+   Google Cloud Console → enable **Places API** → create an API key restricted
+   to the Places API and your domains. Set `GOOGLE_MAPS_API_KEY`. Cost control:
+   we cache aggressively and only fetch Place Details for the top ~8 results.
+2. **Web search** (online communities — subreddits, FB groups, Discord,
+   Meetup): provide ONE of `BRAVE_API_KEY` (preferred,
+   <https://brave.com/search/api/>) or `TAVILY_API_KEY`
+   (<https://tavily.com/>).
+3. **LLM ranking** reuses the existing provider (`GROQ_API_KEY` etc.). With no
+   LLM configured, results fall back to a deterministic rating-based ordering.
+
+Inclusivity is enforced in code: the ranking prompt must surface affirming
+results across every orientation, gender identity, relationship structure, and
+disability, and must never exclude or down-rank on those grounds.
+
 ---
 
 ## Day 0 — Set Vercel env vars
@@ -252,6 +280,11 @@ AWS_REGION=us-east-1
 AWS_ACCESS_KEY_ID=<iam access key id>
 AWS_SECRET_ACCESS_KEY=<iam secret>
 SES_FROM=Intimacy & Sex Library <youraddress@gmail.com>
+
+# Find Help hub (all optional — see "Provision Find Help search").
+# Without these, only the verified clinician directory shows.
+GOOGLE_MAPS_API_KEY=<places api key>
+BRAVE_API_KEY=<brave search key>   # or TAVILY_API_KEY
 
 # Site
 NEXT_PUBLIC_SITE_URL=https://intimacy-and-sex-therapy-library.vercel.app

@@ -6,17 +6,24 @@ import { useEffect, useState } from "react";
 import { LanguageToggle } from "./LanguageToggle";
 import { ThemeToggle } from "./ThemeToggle";
 
-const NAV: Array<{ href: string; label: string }> = [
+const NAV: Array<{ href: string; label: string; aliases?: string[] }> = [
   { href: "/catalog", label: "Catalog" },
   { href: "/paths", label: "Paths" },
   { href: "/library", label: "Library" },
   { href: "/glossary", label: "Glossary" },
   { href: "/myths", label: "Myths" },
   { href: "/assessments", label: "Assessments" },
-  { href: "/clinicians", label: "Find help" },
+  { href: "/clinicians", label: "Find help", aliases: ["/communities"] },
   { href: "/chat", label: "Ask" },
   { href: "/companion", label: "Sahay" },
 ];
+
+function isActive(href: string, aliases: string[] | undefined, pathname: string | null): boolean {
+  if (!pathname) return false;
+  if (pathname === href) return true;
+  if (href !== "/" && pathname.startsWith(href)) return true;
+  return (aliases ?? []).some((a) => pathname.startsWith(a));
+}
 
 export function NavBar({ authSlot }: { authSlot?: React.ReactNode }) {
   const pathname = usePathname();
@@ -58,9 +65,7 @@ export function NavBar({ authSlot }: { authSlot?: React.ReactNode }) {
 
         <ul className="hidden md:flex min-w-0 flex-1 items-center gap-x-0 text-sm overflow-x-auto scrollbar-none">
           {NAV.map((item) => {
-            const active =
-              pathname === item.href ||
-              (item.href !== "/" && pathname?.startsWith(item.href));
+            const active = isActive(item.href, item.aliases, pathname);
             return (
               <li key={item.href} className="shrink-0">
                 <Link
@@ -109,9 +114,7 @@ export function NavBar({ authSlot }: { authSlot?: React.ReactNode }) {
         >
           <ul className="container-page py-3 grid grid-cols-2 gap-2">
             {NAV.map((item) => {
-              const active =
-                pathname === item.href ||
-                (item.href !== "/" && pathname?.startsWith(item.href));
+              const active = isActive(item.href, item.aliases, pathname);
               return (
                 <li key={item.href}>
                   <Link
