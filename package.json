@@ -25,6 +25,7 @@
     "send:digest": "tsx scripts/send-digest.ts",
     "backfill:embeddings": "tsx scripts/backfill-embeddings.ts",
     "seed:corpus": "tsx scripts/seed-corpus.ts",
+    "dedupe:chunks": "tsx scripts/dedupe-chunks.ts",
     "remotion:studio": "remotion studio video-factory/index.ts",
     "social:pull-metrics": "tsx scripts/pull-post-metrics.ts",
     "preflight": "tsx scripts/preflight.ts",

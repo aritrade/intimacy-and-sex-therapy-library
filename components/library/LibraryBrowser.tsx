@@ -1,11 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { LibraryCard } from "./LibraryCard";
 import { KIND_LABEL, type LibItem } from "./types";
 import { isTopicTag, topicLabel } from "@/lib/library/collections";
 
 const KIND_ORDER = ["article", "book", "guideline", "worksheet", "video"] as const;
+const PAGE_SIZE = 24;
 
 /**
  * Full browse experience: free-text filter + kind tabs over the whole library.
@@ -15,6 +16,7 @@ const KIND_ORDER = ["article", "book", "guideline", "worksheet", "video"] as con
 export function LibraryBrowser({ items }: { items: LibItem[] }) {
   const [q, setQ] = useState("");
   const [kind, setKind] = useState<string>("all");
+  const [visible, setVisible] = useState(PAGE_SIZE);
 
   const counts = useMemo(() => {
     const c: Record<string, number> = { all: items.length };
@@ -44,6 +46,15 @@ export function LibraryBrowser({ items }: { items: LibItem[] }) {
       return hay.includes(needle);
     });
   }, [items, q, kind]);
+
+  // Reset the window whenever the result set changes so a new filter doesn't
+  // inherit a previously-expanded count.
+  useEffect(() => {
+    setVisible(PAGE_SIZE);
+  }, [q, kind]);
+
+  const shown = filtered.slice(0, visible);
+  const remaining = filtered.length - shown.length;
 
   return (
     <section aria-labelledby="lib-browse">
@@ -82,13 +93,27 @@ export function LibraryBrowser({ items }: { items: LibItem[] }) {
           across the open research web.
         </p>
       ) : (
-        <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {filtered.map((it) => (
-            <li key={it.id}>
-              <LibraryCard item={it} />
-            </li>
-          ))}
-        </ul>
+        <>
+          <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {shown.map((it) => (
+              <li key={it.id}>
+                <LibraryCard item={it} />
+              </li>
+            ))}
+          </ul>
+          {remaining > 0 && (
+            <div className="mt-6 flex justify-center">
+              <button
+                type="button"
+                onClick={() => setVisible((v) => v + PAGE_SIZE)}
+                className="rounded-full border border-ink-200 px-5 py-2 text-sm text-ink-700 transition hover:border-accent/40 hover:bg-elevated"
+              >
+                Show more
+                <span className="ml-1.5 text-xs text-ink-400">{remaining} more</span>
+              </button>
+            </div>
+          )}
+        </>
       )}
     </section>
   );

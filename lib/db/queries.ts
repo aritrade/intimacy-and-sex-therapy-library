@@ -293,7 +293,7 @@ export async function listLibraryItems(): Promise<LibraryItem[]> {
     .innerJoin(sources, eq(resources.sourceId, sources.id))
     .where(eq(resources.isPublished, true))
     .orderBy(desc(resources.publishedAt))
-    .limit(500);
+    .limit(2000);
 
   if (rows.length === 0) return [];
 

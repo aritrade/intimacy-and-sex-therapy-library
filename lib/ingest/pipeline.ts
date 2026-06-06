@@ -120,6 +120,12 @@ async function ingestOne(r: IngestRecord, opts: { skipEmbeddings?: boolean } = {
   // skipped (e.g. the Discover flywheel) so the daily backfill action embeds
   // later under Gemini's rate limits.
   if (fullTextOk && bodyForRag.length > 0) {
+    // Re-ingesting an existing slug would otherwise append a second copy of
+    // every chunk (same resource_id + ord), inflating read-time and
+    // double-weighting the doc in retrieval. Clear prior chunks first so an
+    // upsert fully replaces the body.
+    await db.delete(chunks).where(eq(chunks.resourceId, resource.id));
+
     const ch = chunkText({ text: bodyForRag });
     const embed =
       !opts.skipEmbeddings && ch.length > 0 ? await embedBatch(ch.map((c) => c.content)) : null;
