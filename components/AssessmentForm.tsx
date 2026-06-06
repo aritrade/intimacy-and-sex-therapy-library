@@ -56,19 +56,9 @@ export function AssessmentForm({ instrument }: { instrument: Instrument }) {
           crisisSignal: !!json.result.crisisSignal,
           at: Date.now(),
         });
-        // Best-effort save for signed-in users; never blocks the UI.
-        // 401 just means the user isn't signed in — we silently ignore.
-        const flags = [json.result.flag, json.result.crisisSignal ? "urgent" : null].filter(Boolean) as string[];
-        fetch("/api/account/assessment-results", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            instrumentId: instrument.id,
-            rawScore: json.result.rawScore,
-            severity: json.result.severityLabel,
-            flags,
-          }),
-        }).catch(() => {});
+        // Persistence to the signed-in account is handled centrally by
+        // ResultsSync (mounted in the root layout), which reacts to the store
+        // change above and writes idempotently. Anonymous users: no-op.
         setTimeout(() => {
           document.getElementById("assessment-result")?.scrollIntoView({ behavior: "smooth" });
         }, 80);

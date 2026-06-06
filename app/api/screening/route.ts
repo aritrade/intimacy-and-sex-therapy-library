@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { reflect } from "@/lib/screening/reflect";
 import { isLlmConfigured } from "@/lib/ai/llm";
+import { auth } from "@/lib/auth/auth";
 import { clientFingerprint, rateLimit } from "@/lib/ratelimit";
 import { log } from "@/lib/observability/logger";
 import { hashForCorrelation } from "@/lib/observability/scrub";
@@ -54,14 +55,20 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "invalid_body" }, { status: 400 });
   }
 
+  // Trend awareness for signed-in users only. Anonymous reflections are
+  // identical to before (no history to compare against).
+  const session = await auth().catch(() => null);
+  const userId = session?.user?.id;
+
   log.info("screening_reflection", {
     correlation,
     count: parsed.data.results.length,
     llm: isLlmConfigured(),
+    authed: !!userId,
   });
 
   try {
-    const reflection = await reflect(parsed.data.results);
+    const reflection = await reflect(parsed.data.results, { userId });
     return NextResponse.json(reflection, { headers: { "Cache-Control": "no-store" } });
   } catch (err) {
     log.error("screening_failed", { correlation, error: String((err as Error).message ?? err) });

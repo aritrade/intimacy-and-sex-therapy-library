@@ -21,6 +21,8 @@ export type StoredResult = {
   flag: "safe" | "monitor" | "clinician_recommended" | "urgent";
   crisisSignal: boolean;
   at: number;
+  /** Epoch ms when this result was persisted to the signed-in account. */
+  syncedAt?: number;
 };
 
 function read(): StoredResult[] {
@@ -51,6 +53,21 @@ export function recordResult(r: StoredResult) {
 
 export function clearResults() {
   write([]);
+}
+
+/** Results not yet persisted to a signed-in account. */
+export function unsyncedResults(): StoredResult[] {
+  return read().filter((r) => !r.syncedAt);
+}
+
+/** Mark the given results (by instrumentId + at) as synced to the account. */
+export function markSynced(keys: Array<{ instrumentId: string; at: number }>) {
+  if (keys.length === 0) return;
+  const match = new Set(keys.map((k) => `${k.instrumentId}:${k.at}`));
+  const list = read().map((r) =>
+    match.has(`${r.instrumentId}:${r.at}`) ? { ...r, syncedAt: Date.now() } : r,
+  );
+  write(list);
 }
 
 export function useStoredResults(): StoredResult[] {

@@ -9,6 +9,7 @@ import { Analytics as VercelAnalytics } from "@vercel/analytics/react";
 import { VisitTracker } from "@/components/VisitTracker";
 import { PWARegister } from "@/components/PWARegister";
 import { AuthMenu } from "@/components/AuthMenu";
+import { ResultsSync } from "@/components/assessments/ResultsSync";
 
 const sans = Inter({
   subsets: ["latin"],
@@ -84,6 +85,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             on /admin/analytics, independent of the external Vercel dashboard. */}
         <VisitTracker />
         <PWARegister />
+        {/* Persists browser-held assessment results to the signed-in account
+            (idempotent; no-op for anonymous visitors). */}
+        <ResultsSync />
       </body>
     </html>
   );

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { assessmentResults } from "@/lib/db/schema";
 import { requireAuth } from "@/lib/auth/roles";
@@ -11,14 +12,19 @@ export const dynamic = "force-dynamic";
  * POST /api/account/assessment-results
  *
  * Persists ONLY the score, severity, and flag list of a completed
- * assessment. Never stores the user's individual answers. Called by
- * AssessmentForm on a successful score, best-effort.
+ * assessment. Never stores the user's individual answers.
+ *
+ * The browser-held results store is the source of truth: ResultsSync replays
+ * unsynced results here (with their original `takenAt`). The write is
+ * idempotent on (userId, instrumentId, takenAt) so replaying on every load /
+ * sign-in can't create duplicates.
  */
 const Body = z.object({
   instrumentId: z.string().min(2).max(64),
   rawScore: z.number().int().min(0).max(200),
-  severity: z.string().min(2).max(32),
+  severity: z.string().min(2).max(64),
   flags: z.array(z.string()).max(16).default([]),
+  takenAt: z.string().datetime().optional(),
 });
 
 export async function POST(req: Request) {
@@ -32,11 +38,30 @@ export async function POST(req: Request) {
   if (!parsed.success) {
     return NextResponse.json({ error: "invalid_body", issues: parsed.error.issues }, { status: 400 });
   }
-  const { instrumentId, rawScore, severity, flags } = parsed.data;
+  const { instrumentId, rawScore, severity, flags, takenAt } = parsed.data;
+  const takenAtDate = takenAt ? new Date(takenAt) : new Date();
+
+  // Idempotency: a result with the same (user, instrument, exact timestamp)
+  // is the same completed run being replayed by the client sync.
+  const existing = await db
+    .select({ id: assessmentResults.id })
+    .from(assessmentResults)
+    .where(
+      and(
+        eq(assessmentResults.userId, gate.userId),
+        eq(assessmentResults.instrumentId, instrumentId),
+        eq(assessmentResults.takenAt, takenAtDate),
+      ),
+    )
+    .limit(1);
+
+  if (existing.length > 0) {
+    return NextResponse.json({ id: existing[0].id, deduped: true }, { status: 200 });
+  }
 
   const inserted = await db
     .insert(assessmentResults)
-    .values({ userId: gate.userId, instrumentId, rawScore, severity, flags })
+    .values({ userId: gate.userId, instrumentId, rawScore, severity, flags, takenAt: takenAtDate })
     .returning({ id: assessmentResults.id });
 
   return NextResponse.json({ id: inserted[0].id }, { status: 201 });

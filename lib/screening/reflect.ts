@@ -1,8 +1,12 @@
 import { z } from "zod";
 import { generateObject } from "ai";
+import { and, desc, eq } from "drizzle-orm";
 import { chatModel, isLlmConfigured } from "@/lib/ai/llm";
 import { INSTRUMENTS, type AssessmentCategory } from "@/lib/assessments/instruments";
+import { scoreMeta } from "@/lib/assessments/score-meta";
 import { listCatalog, type CatalogItem } from "@/lib/db/queries";
+import { db } from "@/lib/db/client";
+import { assessmentResults } from "@/lib/db/schema";
 
 export type IncomingResult = {
   instrumentId: string;
@@ -59,6 +63,7 @@ HARD RULES — non-negotiable:
 - Always orient toward professional help and self-compassion. If results are elevated, clearly suggest speaking with a qualified clinician.
 - Be inclusive of all identities, orientations, and relationship structures (including asexual and LGBTQ+ people). Never pathologize identity.
 - Keep it concise and plain-language. No clinical jargon without a plain gloss.
+- If a result includes a trend (change since last time), you may gently acknowledge progress or persistence in 'patterns' — without overstating a single data point.
 
 Return:
 - patterns: up to 4 short, hedged observations connecting the results.
@@ -78,15 +83,56 @@ async function gatherReads(domains: AssessmentCategory[]): Promise<CatalogItem[]
   return Array.from(bySlug.values()).slice(0, 8);
 }
 
-export async function reflect(results: IncomingResult[]): Promise<Reflection> {
+type Trend = { previous: number; delta: number; betterWhenHigher: boolean; suffix: string };
+
+async function loadTrends(userId: string, valid: IncomingResult[]): Promise<Map<string, Trend>> {
+  const out = new Map<string, Trend>();
+  if (!process.env.DATABASE_URL) return out;
+  for (const r of valid) {
+    const rows = await db
+      .select({ rawScore: assessmentResults.rawScore })
+      .from(assessmentResults)
+      .where(and(eq(assessmentResults.userId, userId), eq(assessmentResults.instrumentId, r.instrumentId)))
+      .orderBy(desc(assessmentResults.takenAt))
+      .limit(5)
+      .catch(() => []);
+    if (rows.length === 0) continue;
+    // The newest row is likely this very result (just synced); use the next.
+    const prev = rows[0].rawScore === r.rawScore ? rows[1] : rows[0];
+    if (!prev) continue;
+    const meta = scoreMeta(r.instrumentId);
+    out.set(r.instrumentId, {
+      previous: prev.rawScore,
+      delta: r.rawScore - prev.rawScore,
+      betterWhenHigher: meta?.betterWhenHigher ?? true,
+      suffix: meta?.suffix ?? "",
+    });
+  }
+  return out;
+}
+
+function trendClause(t: Trend): string {
+  if (t.delta === 0) return "unchanged from last time";
+  const improving = (t.delta < 0 && !t.betterWhenHigher) || (t.delta > 0 && t.betterWhenHigher);
+  const arrow = t.delta > 0 ? "up" : "down";
+  return `${arrow} from ${t.previous}${t.suffix} last time (${improving ? "improving" : "worth watching"})`;
+}
+
+export async function reflect(
+  results: IncomingResult[],
+  opts: { userId?: string } = {},
+): Promise<Reflection> {
   const valid = results.filter((r) => r.instrumentId in INSTRUMENTS);
+
+  const trends = opts.userId ? await loadTrends(opts.userId, valid) : new Map<string, Trend>();
 
   const summary = valid.map((r) => {
     const inst = INSTRUMENTS[r.instrumentId as keyof typeof INSTRUMENTS];
     const score = `${r.rawScore}${r.scoreSuffix ?? ""}/${r.maxScore}${r.scoreSuffix ?? ""}`;
+    const trend = trends.get(r.instrumentId);
     return {
       name: inst.name,
-      line: `${r.severityLabel} (${score})`,
+      line: `${r.severityLabel} (${score})${trend ? ` — ${trendClause(trend)}` : ""}`,
       flag: r.flag,
     };
   });
@@ -115,7 +161,8 @@ export async function reflect(results: IncomingResult[]): Promise<Reflection> {
   const resultsText = valid
     .map((r) => {
       const inst = INSTRUMENTS[r.instrumentId as keyof typeof INSTRUMENTS];
-      return `- ${inst.name} (${inst.category}): ${r.severityLabel}, flag=${r.flag}`;
+      const trend = trends.get(r.instrumentId);
+      return `- ${inst.name} (${inst.category}): ${r.severityLabel}, flag=${r.flag}${trend ? `, trend=${trendClause(trend)}` : ""}`;
     })
     .join("\n");
 

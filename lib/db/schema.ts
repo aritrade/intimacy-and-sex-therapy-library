@@ -740,7 +740,7 @@ export const assessmentResults = pgTable(
       .references(() => users.id, { onDelete: "cascade" }),
     instrumentId: varchar("instrument_id", { length: 64 }).notNull(), // e.g. phq9, gad7, nsss-s
     rawScore: integer("raw_score").notNull(),
-    severity: varchar("severity", { length: 32 }).notNull(),
+    severity: varchar("severity", { length: 64 }).notNull(),
     flags: jsonb("flags").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
     takenAt: timestamp("taken_at", { withTimezone: true }).defaultNow().notNull(),
   },
