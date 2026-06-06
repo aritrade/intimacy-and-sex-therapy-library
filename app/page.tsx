@@ -6,6 +6,7 @@ import { IntakeQuiz } from "@/components/IntakeQuiz";
 import { VideoShelf } from "@/components/VideoShelf";
 import { EmailSignup } from "@/components/EmailSignup";
 import { FeedbackForm } from "@/components/FeedbackForm";
+import { PrimerModal } from "@/components/PrimerModal";
 import { SocialLinks } from "@/components/SocialLinks";
 import { TopVideos } from "@/components/TopVideos";
 import { listFeaturedVideos } from "@/lib/db/queries";
@@ -31,7 +32,7 @@ export default async function HomePage() {
 
   return (
     <>
-      <Hero hasVideos={featuredVideos.length > 0} />
+      <Hero />
       <IntakeQuiz />
       <VideoShelf items={featuredVideos} />
       <TopVideos videos={topVideos} />
@@ -75,7 +76,7 @@ function Welcome() {
   );
 }
 
-function Hero({ hasVideos }: { hasVideos: boolean }) {
+function Hero() {
   return (
     <section className="relative overflow-hidden">
       <div
@@ -106,11 +107,7 @@ function Hero({ hasVideos }: { hasVideos: boolean }) {
               <Link href="/catalog" className="btn-primary">
                 Explore the catalog →
               </Link>
-              {hasVideos && (
-                <a href="#videos" className="btn-secondary">
-                  Watch a 5-minute primer
-                </a>
-              )}
+              <PrimerModal />
               <Link href="/companion" className="btn-ghost">
                 Talk to Sahay
               </Link>

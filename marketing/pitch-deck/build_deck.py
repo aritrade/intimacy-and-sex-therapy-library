@@ -642,6 +642,52 @@ def slide_closing(prs: Presentation, n: int, total: int) -> None:
 
 # ---- Driver ----------------------------------------------------------------
 
+def slide_product(prs: Presentation, n: int, total: int) -> None:
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    _bg(slide)
+    _accent_bar(slide)
+    _text_box(slide, Inches(0.6), Inches(0.85), Inches(12), Inches(0.5),
+              "WHAT PEOPLE ACTUALLY GET", size=12, bold=True, color=ACCENT)
+    _text_box(slide, Inches(0.6), Inches(1.3), Inches(12), Inches(0.9),
+              "A whole product — not just a content feed.",
+              size=34, bold=True, color=INK_900, font="Georgia")
+
+    cards = [
+        ("Library & Discover", TEAL,
+         "Curated articles, books and papers, plus an AI guide that finds trustworthy, plain-language reading on any topic."),
+        ("Sahay companion", PLUM,
+         "A warm, India-aware chat companion — encrypted at rest, with a zero-knowledge Vault mode and clear clinical guardrails."),
+        ("Self-assessments", ACCENT,
+         "Validated instruments (PHQ-9, GAD-7, NSSS) scored on the device, with a gentle, non-diagnostic AI reflection."),
+        ("Find Help", TEAL,
+         "A real-time hub of clinicians plus affirming, LGBTQ+ and asexual-friendly communities, surfaced near the user."),
+    ]
+    top = Inches(2.55)
+    for i, (ttl, color, body) in enumerate(cards):
+        x = Inches(0.6 + i * 3.13)
+        card = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE,
+                                      x, top, Inches(3.0), Inches(3.0))
+        card.adjustments[0] = 0.06
+        _fill(card, RGBColor(0xFF, 0xFB, 0xF3))
+        tab = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE,
+                                     x + Inches(0.22), top + Inches(0.26),
+                                     Inches(1.25), Inches(0.16))
+        tab.adjustments[0] = 0.5
+        _fill(tab, color)
+        _text_box(slide, x + Inches(0.22), top + Inches(0.62),
+                  Inches(2.6), Inches(0.9),
+                  ttl, size=18, bold=True, color=INK_900, font="Georgia")
+        _text_box(slide, x + Inches(0.22), top + Inches(1.45),
+                  Inches(2.6), Inches(1.4),
+                  body, size=12, color=INK_700)
+
+    _text_box(slide, Inches(0.6), Inches(5.9), Inches(12), Inches(0.9),
+              "Private by default: encrypted conversations, a zero-knowledge Vault, no tracking cookies and no data sale —\n"
+              "and every resource is clinician-reviewed before it goes live, with a public model card on the AI's limits.",
+              size=13, color=INK_700, font="Georgia")
+    _footer(slide, n, total)
+
+
 def main() -> None:
     prs = Presentation()
     prs.slide_width = WIDTH
@@ -660,6 +706,7 @@ def main() -> None:
         slide_problem,
         slide_why_now,
         slide_solution,
+        slide_product,
         slide_how_it_works,
         slide_architecture,
         slide_market,

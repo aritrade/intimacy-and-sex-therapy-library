@@ -1,6 +1,6 @@
 # Independence audit — `intimacy-and-sex-therapy-library`
 
-Verified 2026-05-27 — the autonomous content engine runs end-to-end with **no dependency on a personal Mac, on Cursor, or on any other developer workstation**. Everything that needs to happen on a schedule is owned by Vercel Cron, GitHub Actions, or an external SaaS API.
+Verified 2026-06-06 — the autonomous content engine runs end-to-end with **no dependency on a personal Mac, on Cursor, or on any other developer workstation**. Everything that needs to happen on a schedule is owned by Vercel Cron, GitHub Actions, or an external SaaS API. Even the marketing collateral (pitch deck, investor explainer, homepage primer film) is now regenerable on GitHub's runners — see the `marketing-build` workflow below.
 
 ## What runs where
 
@@ -16,6 +16,7 @@ Verified 2026-05-27 — the autonomous content engine runs end-to-end with **no 
 | Adversarial eval harness (nightly) | GitHub Actions (`eval-nightly.yml`) | `0 2 * * *` UTC | Off by default for forks (spends real LLM money). |
 | Lighthouse a11y / perf | GitHub Actions (`lighthouse.yml`) | every PR + push to main | Blocks on accessibility / best-practices / SEO regressions. |
 | CI (typecheck + tests) | GitHub Actions (`ci.yml`) | every PR + push to main | Node 22 LTS. |
+| Marketing collateral (deck + explainer + primer film) | GitHub Actions (`marketing-build.yml`) | `workflow_dispatch` | ffmpeg + Edge TTS + Pillow/python-pptx on Ubuntu; commits refreshed `.pptx` / `.mp4` back. No Mac needed to rebuild. |
 
 **Net: the operator's machine is never on the critical path for any production workflow.** Cursor is the editor used to author code; once the code is pushed to `main`, every subsequent step is automated.
 
@@ -27,6 +28,7 @@ Critical runtime keys all present:
 
 - **Storage / database**: `DATABASE_URL` (Neon), `BLOB_READ_WRITE_TOKEN` (Vercel Blob).
 - **Auth**: `AUTH_SECRET`, `AUTH_RESEND_KEY`, `AUTH_RESEND_FROM`, `BOOTSTRAP_ADMIN_EMAILS`.
+- **Email (newsletter + contact)**: `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` (Gmail SMTP) with Resend as a fallback. `CONTACT_TO` routes the contact form.
 - **LLM**: `LLM_PROVIDER=groq`, `GROQ_API_KEY`, `GROQ_MODEL`.
 - **Voice/render**: `TTS_PROVIDER` (Edge TTS, no API key required), `PEXELS_API_KEY`, `PIXABAY_API_KEY`, `REPLICATE_API_TOKEN`.
 - **Social publish**: `META_GRAPH_ACCESS_TOKEN`, `INSTAGRAM_BUSINESS_ACCOUNT_ID`, `FACEBOOK_PAGE_ID`, `META_FACEBOOK_PAGE_ID`, `YOUTUBE_CLIENT_ID`, `YOUTUBE_CLIENT_SECRET`, `YOUTUBE_REFRESH_TOKEN`, `YOUTUBE_CHANNEL_ID`.
@@ -35,7 +37,7 @@ Critical runtime keys all present:
 - **Cron auth**: `CRON_SECRET`.
 - **Misc**: `LOG_LEVEL`, `ADMIN_BASIC_USER`, `ADMIN_BASIC_AUTH_ENABLED`, `NEXT_PUBLIC_SITE_URL`.
 
-**One known gap (intentional, pending external approval):** `BUTTONDOWN_API_KEY` is unset. The `/api/email/subscribe` endpoint returns 503 with a friendly client-side message until the Buttondown newsletter approval clears.
+**Email status (resolved 2026-06-06):** the owned double opt-in newsletter and the Contact Us form now send through Gmail SMTP (no custom domain required) via the provider-agnostic mailer (`lib/email/mailer.ts` → SES → SMTP → Resend). The earlier Buttondown 503 gap is closed. If every provider is unset the endpoints still degrade gracefully to a friendly client message instead of erroring.
 
 ### GitHub Actions (repo) — 6 secrets set
 

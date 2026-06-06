@@ -371,6 +371,56 @@ def scene_closing(idx: int, total: int) -> Image.Image:
     return img
 
 
+def scene_product(idx: int, total: int) -> Image.Image:
+    img = Image.new("RGB", (W, H), BG)
+    d = ImageDraw.Draw(img)
+    _draw_eyebrow(d, "What people actually get")
+    d.multiline_text((110, 200),
+                     "A whole product \u2014 not\njust a content feed.",
+                     font=font(SERIF_BOLD, 60), fill=INK_900, spacing=14)
+    cards = [
+        ("Library & Discover", TEAL, "Curated articles, books and\npapers, plus an AI guide that\nfinds trustworthy reading."),
+        ("Sahay companion", PLUM, "A warm, India-aware chat\ncompanion \u2014 encrypted, with a\nzero-knowledge Vault mode."),
+        ("Self-assessments", ACCENT, "Validated tools scored on the\ndevice, with a gentle, non-\ndiagnostic AI reflection."),
+        ("Find Help", TEAL, "Clinicians plus affirming,\nLGBTQ+ and ace-friendly\ncommunities near you."),
+    ]
+    card_w, card_h = 405, 440
+    for i, (ttl, color, body) in enumerate(cards):
+        x = 110 + i * (card_w + 20)
+        y = 540
+        _rounded_rect(d, [x, y, x + card_w, y + card_h], CARD, radius=24)
+        _rounded_rect(d, [x + 30, y + 30, x + 360, y + 80], color, radius=14)
+        d.text((x + 50, y + 38), ttl, font=font(SANS_BOLD, 26), fill=CARD)
+        d.multiline_text((x + 30, y + 130), body,
+                         font=font(SANS, 22), fill=INK_700, spacing=12)
+    _draw_footer(d, idx, total)
+    return img
+
+
+def scene_trust(idx: int, total: int) -> Image.Image:
+    img = Image.new("RGB", (W, H), BG)
+    d = ImageDraw.Draw(img)
+    _draw_eyebrow(d, "Trust & safety")
+    d.multiline_text((110, 200),
+                     "Private by default.\nHonest about its limits.",
+                     font=font(SERIF_BOLD, 60), fill=INK_900, spacing=14)
+    items = [
+        "Conversations are encrypted at rest; a zero-knowledge Vault keeps even us out.",
+        "No tracking cookies and no data sale \u2014 by design.",
+        "Every resource is clinician-reviewed before it goes live.",
+        "A public model card documents what the AI will, and won't, do.",
+        "India-first crisis routing whenever a moment needs more than information.",
+    ]
+    y = 520
+    for line in items:
+        d.ellipse([110, y + 14, 138, y + 42], fill=TEAL)
+        d.text((117, y + 10), "\u2713", font=font(SANS_BOLD, 22), fill=CARD)
+        d.text((180, y + 8), line, font=font(SANS, 26), fill=INK_700)
+        y += 64
+    _draw_footer(d, idx, total)
+    return img
+
+
 SCENES: List[Scene] = [
     Scene(
         "01_title",
@@ -408,6 +458,22 @@ SCENES: List[Scene] = [
         "Review: a two-stage human gate \u2014 a sex therapist signs off clinically, an editor signs off editorially. "
         "Distribution: we render to YouTube, Instagram and Facebook Reels with one consistent voice and visual identity.",
         scene_solution,
+    ),
+    Scene(
+        "04b_product",
+        "But this isn't just a content feed \u2014 it's a whole product. "
+        "A clinician-curated library with an AI research guide. Sahay, a warm, India-aware companion. "
+        "Private self-assessments with a gentle, non-diagnostic reflection. "
+        "And a Find Help hub that points people to clinicians and affirming communities near them.",
+        scene_product,
+    ),
+    Scene(
+        "04c_trust",
+        "All of it is private by default. Conversations are encrypted, with a zero-knowledge Vault mode "
+        "that keeps even us out. There are no tracking cookies, and no data sale. "
+        "Every resource is reviewed by clinicians before it goes live, and a public model card is honest "
+        "about exactly what the AI will, and won't, do.",
+        scene_trust,
     ),
     Scene(
         "05_architecture",

@@ -57,3 +57,7 @@ scripts/push-vercel-secrets.sh
 marketing/pitch-video/_work/
 # Office / Keynote lock files when the deck is open for review.
 ~$*.pptx
+
+# All marketing render intermediates (primer, future scripts)
+marketing/**/_work/
+marketing/**/_render.log
