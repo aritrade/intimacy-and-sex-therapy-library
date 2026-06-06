@@ -10,7 +10,7 @@
 
 import { sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { sendEmail, sesConfigured } from "@/lib/email/ses";
+import { sendEmail, emailConfigured, emailProvider } from "@/lib/email/mailer";
 import { digestEmail, type DigestItem } from "@/lib/email/templates";
 import { unsubscribeUrl } from "@/lib/email/subscribers";
 import { topPublicVideos } from "@/lib/admin/dashboard-stats";
@@ -101,8 +101,8 @@ export async function sendDigest(opts: {
   if (!process.env.DATABASE_URL) {
     return { attempted: 0, sent: 0, failed: 0, skipped: true, reason: "DATABASE_URL unset" };
   }
-  if (!opts.dryRun && !sesConfigured()) {
-    return { attempted: 0, sent: 0, failed: 0, skipped: true, reason: "SES not configured" };
+  if (!opts.dryRun && !emailConfigured()) {
+    return { attempted: 0, sent: 0, failed: 0, skipped: true, reason: "no email provider configured" };
   }
 
   const digest = opts.digest ?? (await buildDigest({ sinceDays: opts.sinceDays }));
@@ -122,7 +122,10 @@ export async function sendDigest(opts: {
   };
   if (opts.dryRun) return result;
 
-  const perSecond = Math.max(1, opts.maxPerSecond ?? 5);
+  // Resend's standard rate limit is ~2 req/s; SES production is much higher.
+  // Default conservatively per active provider so the loop doesn't get 429'd.
+  const defaultPerSecond = emailProvider() === "resend" ? 2 : 5;
+  const perSecond = Math.max(1, opts.maxPerSecond ?? defaultPerSecond);
   const gapMs = Math.ceil(1000 / perSecond);
 
   for (const r of recipients) {

@@ -17,7 +17,7 @@ import { z } from "zod";
 import { createHash } from "node:crypto";
 import { recordAudit } from "@/lib/observability/audit";
 import { validateEmailDeep } from "@/lib/validation/email";
-import { sendEmail, sesConfigured } from "@/lib/email/ses";
+import { sendEmail, emailConfigured } from "@/lib/email/mailer";
 import {
   upsertPendingSubscriber,
   confirmUrl,
@@ -55,9 +55,9 @@ export async function POST(req: Request) {
   }
   const cleanEmail = emailCheck.normalized;
 
-  if (!sesConfigured()) {
+  if (!emailConfigured()) {
     return NextResponse.json(
-      { error: "email_disabled", detail: "Set SES_FROM + AWS_* envs to enable list signup." },
+      { error: "email_disabled", detail: "Set AUTH_RESEND_* (or SES_*) envs to enable list signup." },
       { status: 503 },
     );
   }

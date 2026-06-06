@@ -5,7 +5,8 @@
  *   npm run send:digest -- --dry-run    # build + count recipients, no send
  *   npm run send:digest -- --days=14    # widen the "new resources" window
  *
- * Sends via Amazon SES (throttled). Fail-soft per recipient; logs a summary.
+ * Sends via the configured provider (Resend or Amazon SES), throttled.
+ * Fail-soft per recipient; logs a summary.
  */
 
 import "dotenv/config";

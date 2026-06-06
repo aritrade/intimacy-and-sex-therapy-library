@@ -57,7 +57,7 @@ function getClient(): SESv2Client {
   return client;
 }
 
-export async function sendEmail(args: SendArgs): Promise<SendResult> {
+export async function sendViaSes(args: SendArgs): Promise<SendResult> {
   if (!sesConfigured()) {
     return { ok: false, skipped: true, reason: "SES not configured (set SES_FROM + AWS_* envs)" };
   }
