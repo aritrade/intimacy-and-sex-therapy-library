@@ -88,8 +88,17 @@ export async function POST(req: Request) {
   });
 
   if (!sent.ok) {
+    // Log the real provider reason for operators; never leak it to the public
+    // (it can expose the sending domain, account state, and internal config —
+    // e.g. Resend's test-mode 403).
+    const fp = createHash("sha256").update(cleanEmail).digest("hex").slice(0, 16);
+    void recordAudit({
+      actor: "public:subscribe",
+      action: "email_subscribe_failed",
+      meta: { fingerprint: fp, locale: locale ?? null, reason: sent.reason },
+    });
     return NextResponse.json(
-      { error: "email_send_failed", detail: sent.reason },
+      { error: "email_send_failed", detail: "Couldn't send the confirmation email right now. Please try again later." },
       { status: 502 },
     );
   }
