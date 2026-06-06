@@ -74,6 +74,29 @@ export const ScriptSchema = z.object({
   durationSeconds: z.number().min(15).max(600),
 });
 
+/**
+ * Wire schema handed to the LLM. Identical to `ScriptSchema` EXCEPT each
+ * body item's `seconds` is optional. llama-3.3 (and other open models)
+ * routinely write the scene/chapter prose but omit the per-scene timing,
+ * which made `generateObject` throw `AI_TypeValidationError`
+ * ("missing properties: 'seconds'") and discard an otherwise-good script —
+ * the single biggest cause of the daily run landing 4/5 instead of 5/5.
+ * We accept the omission here and backfill a sensible value in
+ * `fillSeconds()` (word-count estimate; 2s for carousel slides).
+ */
+const LlmScriptSchema = ScriptSchema.extend({
+  body: z
+    .array(
+      z.object({
+        text: z.string().min(4).max(1200),
+        seconds: z.number().min(2).max(60).optional(),
+      }),
+    )
+    .min(2)
+    .max(20),
+});
+type LlmScript = z.infer<typeof LlmScriptSchema>;
+
 /** Strict caps applied post-generation (the schema is generous on purpose). */
 const STRICT_CAPS = {
   hook: 160,
@@ -111,6 +134,41 @@ function truncateScript(s: GeneratedScript): GeneratedScript {
       text: smartTruncate(b.text, STRICT_CAPS.bodyText),
     })),
   };
+}
+
+/**
+ * Backfill `seconds` for any body item the LLM returned without it (see
+ * `LlmScriptSchema`). Carousel slides are untimed (renderer ignores it) so
+ * they get a flat 2s; every other style estimates from the spoken word
+ * count at the narrator's measured pace, clamped to the schema's [2,60]
+ * bounds. Falls back to an even split of the target duration for an empty
+ * scene. Returns a strict `GeneratedScript["body"]` (seconds always set).
+ */
+function fillSeconds(
+  body: LlmScript["body"],
+  style: ScriptStyle,
+  targetSeconds: number,
+): GeneratedScript["body"] {
+  const wordsPerSecond = NARRATOR.tts.targetWpm / 60;
+  return body.map((b) => {
+    if (typeof b.seconds === "number") return { text: b.text, seconds: b.seconds };
+    if (style === "carousel") return { text: b.text, seconds: 2 };
+    const words = countWords(b.text);
+    const est =
+      words > 0
+        ? Math.round(words / wordsPerSecond)
+        : Math.round(targetSeconds / Math.max(1, body.length));
+    return { text: b.text, seconds: Math.min(60, Math.max(2, est)) };
+  });
+}
+
+/** Promote a lenient LLM result to the strict `GeneratedScript` shape. */
+function coerceScript(
+  raw: LlmScript,
+  style: ScriptStyle,
+  targetSeconds: number,
+): GeneratedScript {
+  return { ...raw, body: fillSeconds(raw.body, style, targetSeconds) };
 }
 
 const HASHTAG_RX = /^#[\p{L}\p{N}_]{2,40}$/u;
@@ -327,15 +385,19 @@ When rewriting:
   const prompt = `BRIEF:\n${input.brief}\n${sourceHint}${evidenceBlock}${feedbackBlock}\nReturn JSON matching the schema. Keep all language clear, warm, and judgment-free.`;
 
   // First attempt.
-  let object = (
-    await generateObject({
-      model: chatModel(),
-      system,
-      prompt,
-      schema: ScriptSchema,
-      temperature: 0.5,
-    })
-  ).object;
+  let object = coerceScript(
+    (
+      await generateObject({
+        model: chatModel(),
+        system,
+        prompt,
+        schema: LlmScriptSchema,
+        temperature: 0.5,
+      })
+    ).object,
+    style,
+    targetSeconds,
+  );
 
   // Post-gen word-count guard for long-form. Past drafts of "4-minute
   // essays" came back as 80-word bullet lists (30s of speech). If the
@@ -348,17 +410,23 @@ When rewriting:
       const retryPrompt = `${prompt}
 
 The previous attempt totalled ${wordsFirst} words across all chapters, which is too short for a ${targetSeconds}-second essay. You MUST write between ${budget.min} and ${budget.max} words total across the body chapters this time. Each chapter's text field is a full 45-80 word paragraph in the narrator's voice — not a headline, not a sentence fragment. Write the actual prose the narrator will read aloud.`;
-      const second = await generateObject({
-        model: chatModel(),
-        system,
-        prompt: retryPrompt,
-        schema: ScriptSchema,
-        temperature: 0.65,
-      });
-      const wordsSecond = bodyWordCount(second.object);
+      const second = coerceScript(
+        (
+          await generateObject({
+            model: chatModel(),
+            system,
+            prompt: retryPrompt,
+            schema: LlmScriptSchema,
+            temperature: 0.65,
+          })
+        ).object,
+        style,
+        targetSeconds,
+      );
+      const wordsSecond = bodyWordCount(second);
       // Keep whichever attempt is closer to the ideal (in either direction).
       const diff = (w: number) => Math.abs(w - budget.ideal);
-      object = diff(wordsSecond) < diff(wordsFirst) ? second.object : object;
+      object = diff(wordsSecond) < diff(wordsFirst) ? second : object;
     }
   }
 
@@ -377,10 +445,10 @@ The previous attempt totalled ${wordsFirst} words across all chapters, which is 
         model: chatModel(),
         system,
         prompt: rewritePrompt,
-        schema: ScriptSchema,
+        schema: LlmScriptSchema,
         temperature: 0.5,
       });
-      return r.object;
+      return coerceScript(r.object, style, targetSeconds);
     },
   });
   object = critiqueResult.script;

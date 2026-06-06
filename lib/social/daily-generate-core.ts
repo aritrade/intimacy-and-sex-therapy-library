@@ -17,7 +17,7 @@ import { contentDrafts, resources, resourceTags, tags } from "@/lib/db/schema";
 import { generateScript, ScriptRefusal } from "@/lib/social/script-generator";
 import {
   CONTENT_BRIEFS,
-  pickBriefsForToday,
+  orderedBriefs,
   type ContentBrief,
 } from "@/lib/social/content-briefs";
 import { retrieveEvidence } from "@/lib/social/grounding";
@@ -104,12 +104,15 @@ export async function runDailyGenerate(opts?: {
   const shortFormCount = Number(process.env.DAILY_GENERATE_SHORT_FORM ?? 3);
   const longFormCount = Number(process.env.DAILY_GENERATE_LONG_FORM ?? 2);
 
-  const picks = pickBriefsForToday({
-    date: now,
-    shortFormCount,
-    longFormCount,
-    recentlyUsedIds,
-  });
+  const ordered = orderedBriefs({ date: now, recentlyUsedIds });
+  const picks = {
+    shortForm: ordered.shortForm.slice(0, shortFormCount),
+    longForm: ordered.longForm.slice(0, longFormCount),
+  };
+  // Backups the top-up phase draws on when a pick fails or is refused, so
+  // the day still lands the full short + long quota.
+  const backupShort = ordered.shortForm.slice(shortFormCount);
+  const backupLong = ordered.longForm.slice(longFormCount);
 
   // Up-front audit so a mid-run timeout still leaves evidence the run fired.
   await recordAudit({
@@ -126,59 +129,103 @@ export async function runDailyGenerate(opts?: {
   const longFormSeconds = Number(process.env.DAILY_GENERATE_LONG_FORM_SECONDS ?? 120);
   const shortFormSeconds = Number(process.env.DAILY_GENERATE_SHORT_FORM_SECONDS ?? 30);
 
-  // Long-form goes FIRST so it wins the event loop if a partial timeout still
-  // happens on a constrained runtime — better to lose a reel than the essay.
+  // Job factories so the top-up phase can mint replacement jobs that match
+  // the shape (style + language rotation) of the originals. Long-form goes
+  // FIRST so it wins the event loop if a partial timeout still happens on a
+  // constrained runtime — better to lose a reel than the essay.
+  const makeLongJob = (brief: ContentBrief): Job => ({
+    brief,
+    language: "en",
+    style: "long_form_essay",
+    durationSeconds: longFormSeconds,
+    kind: "long_form",
+  });
+  const makeShortJob = (brief: ContentBrief, i: number): Job => ({
+    brief,
+    language: (["en", "hinglish"] as const)[i % 2],
+    style: i % 2 === 0 ? "typography" : "stock",
+    durationSeconds: shortFormSeconds,
+    kind: "reel",
+  });
+
   const jobs: Job[] = [
-    ...picks.longForm.map<Job>((brief) => ({
-      brief,
-      language: "en",
-      style: "long_form_essay",
-      durationSeconds: longFormSeconds,
-      kind: "long_form",
-    })),
-    ...picks.shortForm.map<Job>((brief, i) => ({
-      brief,
-      language: (["en", "hinglish"] as const)[i % 2],
-      style: i % 2 === 0 ? "typography" : "stock",
-      durationSeconds: shortFormSeconds,
-      kind: "reel",
-    })),
+    ...picks.longForm.map((brief) => makeLongJob(brief)),
+    ...picks.shortForm.map((brief, i) => makeShortJob(brief, i)),
   ];
 
   const concurrency = Math.max(1, opts?.concurrency ?? jobs.length);
   const delayMs = Math.max(0, opts?.delayMs ?? 0);
-  const settled = await mapSettled(jobs, concurrency, (j) => generateOne(j, actor), delayMs);
 
   const summary: DailyGenerateSummary = {
-    attempted: jobs.length,
+    attempted: 0,
     created: 0,
     refused: 0,
     failed: 0,
     briefIds: [],
     errors: [],
   };
-  for (let i = 0; i < settled.length; i++) {
-    const job = jobs[i];
-    const r = settled[i];
-    if (r.status === "fulfilled") {
-      const v = r.value;
-      if (v.outcome === "created") {
-        summary.created += 1;
-        summary.briefIds.push(job.brief.id);
-      } else if (v.outcome === "refused") {
-        summary.refused += 1;
-        summary.errors.push({ briefId: job.brief.id, reason: `refusal:${v.reason}` });
+  // Per-kind tally drives the top-up: we replace like with like so the daily
+  // mix (short + long) is preserved, not just the total count.
+  let createdLong = 0;
+  let createdShort = 0;
+
+  const runAndTally = async (batch: Job[]): Promise<void> => {
+    summary.attempted += batch.length;
+    const settled = await mapSettled(batch, concurrency, (j) => generateOne(j, actor), delayMs);
+    for (let i = 0; i < settled.length; i++) {
+      const job = batch[i];
+      const r = settled[i];
+      if (r.status === "fulfilled") {
+        const v = r.value;
+        if (v.outcome === "created") {
+          summary.created += 1;
+          summary.briefIds.push(job.brief.id);
+          if (job.kind === "long_form") createdLong += 1;
+          else createdShort += 1;
+        } else if (v.outcome === "refused") {
+          summary.refused += 1;
+          summary.errors.push({ briefId: job.brief.id, reason: `refusal:${v.reason}` });
+        } else {
+          summary.failed += 1;
+          summary.errors.push({ briefId: job.brief.id, reason: v.reason });
+        }
       } else {
         summary.failed += 1;
-        summary.errors.push({ briefId: job.brief.id, reason: v.reason });
+        summary.errors.push({
+          briefId: job.brief.id,
+          reason: String((r.reason as Error)?.message ?? r.reason).slice(0, 200),
+        });
       }
-    } else {
-      summary.failed += 1;
-      summary.errors.push({
-        briefId: job.brief.id,
-        reason: String((r.reason as Error)?.message ?? r.reason).slice(0, 200),
-      });
     }
+  };
+
+  // Phase 1: today's picks.
+  await runAndTally(jobs);
+
+  // Phase 2: top-up. Replace any failed/refused pick with a fresh backup
+  // brief of the SAME kind until we hit the per-kind quota — or run out of
+  // budget/backups. Bounded by DAILY_GENERATE_TOPUP_MAX so a pathological
+  // streak of refusals can never burn unlimited tokens or wall time.
+  const maxTopup = Math.max(0, Number(process.env.DAILY_GENERATE_TOPUP_MAX ?? 4));
+  const longQueue = [...backupLong];
+  const shortQueue = [...backupShort];
+  let topupUsed = 0;
+  let shortIdx = picks.shortForm.length;
+  while (topupUsed < maxTopup) {
+    const needLong = Math.max(0, longFormCount - createdLong);
+    const needShort = Math.max(0, shortFormCount - createdShort);
+    if (needLong === 0 && needShort === 0) break;
+
+    const batch: Job[] = [];
+    for (let i = 0; i < needLong && longQueue.length > 0 && topupUsed + batch.length < maxTopup; i++) {
+      batch.push(makeLongJob(longQueue.shift()!));
+    }
+    for (let i = 0; i < needShort && shortQueue.length > 0 && topupUsed + batch.length < maxTopup; i++) {
+      batch.push(makeShortJob(shortQueue.shift()!, shortIdx++));
+    }
+    if (batch.length === 0) break; // backups exhausted
+    topupUsed += batch.length;
+    await runAndTally(batch);
   }
 
   await recordAudit({
@@ -189,6 +236,7 @@ export async function runDailyGenerate(opts?: {
       created: summary.created,
       refused: summary.refused,
       failed: summary.failed,
+      topupUsed,
       briefIds: summary.briefIds,
       errors: summary.errors,
     },

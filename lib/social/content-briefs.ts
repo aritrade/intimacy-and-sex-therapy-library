@@ -387,10 +387,15 @@ export const CONTENT_BRIEFS: ContentBrief[] = [
   },
 ];
 
-export function pickBriefsForToday(opts: {
+/**
+ * Full freshness-ordered candidate lists, split by form. The first N of
+ * each are today's picks; the remainder serve as backups the daily cron
+ * draws on to top up when a pick fails or is refused (so the day still
+ * lands the full short+long quota). Deterministic per UTC date so retries
+ * are stable.
+ */
+export function orderedBriefs(opts: {
   date: Date;
-  shortFormCount: number;
-  longFormCount: number;
   recentlyUsedIds: Set<string>;
 }): {
   shortForm: ContentBrief[];
@@ -413,8 +418,24 @@ export function pickBriefsForToday(opts: {
   };
 
   return {
-    shortForm: [...shortCandidates].sort(sortByFreshness).slice(0, opts.shortFormCount),
-    longForm: [...longCandidates].sort(sortByFreshness).slice(0, opts.longFormCount),
+    shortForm: [...shortCandidates].sort(sortByFreshness),
+    longForm: [...longCandidates].sort(sortByFreshness),
+  };
+}
+
+export function pickBriefsForToday(opts: {
+  date: Date;
+  shortFormCount: number;
+  longFormCount: number;
+  recentlyUsedIds: Set<string>;
+}): {
+  shortForm: ContentBrief[];
+  longForm: ContentBrief[];
+} {
+  const ordered = orderedBriefs({ date: opts.date, recentlyUsedIds: opts.recentlyUsedIds });
+  return {
+    shortForm: ordered.shortForm.slice(0, opts.shortFormCount),
+    longForm: ordered.longForm.slice(0, opts.longFormCount),
   };
 }
 
