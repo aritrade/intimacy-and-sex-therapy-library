@@ -48,8 +48,8 @@ export function DisclaimerFooter() {
       </div>
       <div className="border-t border-border px-4 sm:px-6 py-4 text-center text-xs text-ink-400">
         © {new Date().getFullYear()} Intimacy &amp; Sex Therapy Library · 18+ ·{" "}
-        <Link href="/about/contact" className="hover:text-ink-900">
-          Grievance Officer
+        <Link href="/contact" className="hover:text-ink-900">
+          Contact Us
         </Link>
       </div>
     </footer>

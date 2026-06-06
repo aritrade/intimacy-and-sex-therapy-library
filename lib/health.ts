@@ -7,6 +7,8 @@
 import { sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { isKmsConfigured, getKms } from "@/lib/kms";
+import { isLlmConfigured, providerLabel } from "@/lib/ai/llm";
+import { embeddingsEnabled } from "@/lib/ai/embeddings";
 
 export type Subsystem = { ok: boolean; detail?: string };
 export type HealthReport = {
@@ -65,15 +67,17 @@ export async function getHealthReport(): Promise<HealthReport> {
     out.subsystems.kms = { ok: false, detail: (e as Error).message };
   }
 
-  // We DO NOT make billable LLM calls here — only confirm that the keys
-  // are present in env. The eval harness validates real correctness.
-  out.subsystems.llm = process.env.ANTHROPIC_API_KEY
-    ? { ok: true, detail: "anthropic key present" }
-    : { ok: false, detail: "ANTHROPIC_API_KEY not set" };
+  // We DO NOT make billable LLM calls here — only confirm a provider is
+  // configured. Provider-agnostic: honours LLM_PROVIDER and any of the
+  // supported keys (Groq / Anthropic / Ollama), not just Anthropic.
+  out.subsystems.llm = isLlmConfigured()
+    ? { ok: true, detail: providerLabel() }
+    : { ok: false, detail: "no LLM provider configured (set LLM_PROVIDER + key)" };
 
-  out.subsystems.embed = process.env.OPENAI_API_KEY
-    ? { ok: true, detail: "openai key present" }
-    : { ok: false, detail: "OPENAI_API_KEY not set" };
+  // Embeddings run on Gemini (gemini-embedding-001) in the free-tier deploy.
+  out.subsystems.embed = embeddingsEnabled()
+    ? { ok: true, detail: "gemini-embedding-001" }
+    : { ok: false, detail: "GEMINI_API_KEY not set (RAG falls back to keyword search)" };
 
   out.ok = out.subsystems.db.ok && out.subsystems.kms.ok;
   return out;

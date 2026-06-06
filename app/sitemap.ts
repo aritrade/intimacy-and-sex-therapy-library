@@ -27,6 +27,7 @@ const STATIC_PATHS: Array<{ path: string; changeFrequency: Entry["changeFrequenc
   { path: "/about/privacy", changeFrequency: "monthly", priority: 0.4 },
   { path: "/about/model", changeFrequency: "monthly", priority: 0.4 },
   { path: "/about/clinical-board", changeFrequency: "monthly", priority: 0.4 },
+  { path: "/contact", changeFrequency: "yearly", priority: 0.4 },
   { path: "/status", changeFrequency: "always", priority: 0.3 },
 ];
 

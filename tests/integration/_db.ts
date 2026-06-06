@@ -34,6 +34,7 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import postgres from "postgres";
 import * as schema from "@/lib/db/schema";
+import { HAND_WRITTEN_MIGRATIONS } from "@/lib/db/hand-written-migrations";
 
 export type TestDb = {
   client: ReturnType<typeof postgres>;
@@ -75,7 +76,12 @@ export async function getTestDb(): Promise<TestDb> {
     await client`CREATE EXTENSION IF NOT EXISTS pg_trgm`;
     // Pretend we live in the project root so paths to drizzle/ resolve.
     await migrate(db, { migrationsFolder: "./drizzle" });
-    for (const sqlFile of ["0001_indexes.sql", "0002_reviewer_notes.sql"]) {
+    // Apply the SAME hand-written migrations production runs (single source of
+    // truth in lib/db/hand-written-migrations.ts) so the test DB never drifts
+    // from prod — previously this list was a stale subset (0001 + 0002 only),
+    // which is why specs hit "column grounding does not exist". All files are
+    // idempotent, so applying the full list on a fresh DB is safe.
+    for (const [, sqlFile] of HAND_WRITTEN_MIGRATIONS) {
       const sqlPath = join(process.cwd(), "drizzle", sqlFile);
       await client.unsafe(readFileSync(sqlPath, "utf8"));
     }
