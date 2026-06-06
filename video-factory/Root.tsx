@@ -5,8 +5,22 @@ import { AvatarReel, type AvatarReelProps } from "./AvatarReel";
 import { PhotoReel, type PhotoReelProps } from "./PhotoReel";
 import { LongFormEssay, type LongFormEssayProps } from "./LongFormEssay";
 import { QuoteCarousel, type QuoteCarouselProps } from "./QuoteCarousel";
+import { Primer, type PrimerProps, type PrimerSceneData } from "./Primer";
+import primerScript from "../marketing/primer/script.json";
 
 const FPS = 30;
+
+// The homepage primer. Content lives in marketing/primer/script.json (the same
+// file the narration builder reads). Per-scene `seconds` are placeholders here
+// for studio preview; scripts/render-primer.ts overrides them from
+// marketing/primer/timings.json so the cut lands exactly on the voiceover.
+const primerScenes: PrimerSceneData[] = (primerScript.scenes as Omit<PrimerSceneData, "seconds">[]).map(
+  (s, i) => ({ ...s, seconds: i === primerScript.scenes.length - 1 ? 15 : 17 }),
+);
+const samplePrimer: PrimerProps = {
+  scenes: primerScenes,
+  totalSeconds: primerScenes.reduce((acc, s) => acc + s.seconds, 0),
+};
 
 const sample: ShortFormProps = {
   hook: "A reminder, not a remedy:",
@@ -142,6 +156,24 @@ export const RemotionRoot: React.FC = () => {
         defaultProps={sampleLong}
         calculateMetadata={({ props }) => ({
           durationInFrames: Math.ceil(props.totalSeconds * FPS),
+        })}
+      />
+
+      {/* 16:9 homepage primer — the cinematic "Watch a 5-minute primer"
+          film. Light brand palette, motion-design walkthrough. Rendered
+          silent then muxed with narration by scripts/render-primer.ts. */}
+      <Composition
+        id="Primer"
+        component={Primer}
+        durationInFrames={Math.ceil(samplePrimer.totalSeconds * FPS)}
+        fps={FPS}
+        width={1920}
+        height={1080}
+        defaultProps={samplePrimer}
+        calculateMetadata={({ props }) => ({
+          durationInFrames: Math.ceil(
+            props.scenes.reduce((acc, s) => acc + s.seconds, 0) * FPS,
+          ),
         })}
       />
 

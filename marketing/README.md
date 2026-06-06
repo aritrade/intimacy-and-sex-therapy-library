@@ -12,7 +12,7 @@ controlled, not hand-built.
 | `INDEPENDENCE_AUDIT.md` | Audit confirming the engine has no dependency on the operator's Mac or on Cursor. Lists every cron, secret, and workflow and what runs where. | [view](INDEPENDENCE_AUDIT.md) | Edit in place; no build step. |
 | `pitch-deck/Intimacy-and-Sex-Therapy-Library-Pitch.pptx` | 14-slide investor / PM deck. Problem → why-now → solution → architecture → market → competition → traction → economics → roadmap → team → ask. | [download `.pptx`](https://github.com/productdecoded/intimacy-and-sex-therapy-library/raw/main/marketing/pitch-deck/Intimacy-and-Sex-Therapy-Library-Pitch.pptx) | `python3 marketing/pitch-deck/build_deck.py` |
 | `pitch-video/Intimacy-and-Sex-Therapy-Library-Pitch.mp4` | ~4-minute narrated explainer (1920×1080 H.264). Same voice as the app's published reels — Microsoft Edge TTS, `en-US-JennyNeural`. | [download `.mp4`](https://github.com/productdecoded/intimacy-and-sex-therapy-library/raw/main/marketing/pitch-video/Intimacy-and-Sex-Therapy-Library-Pitch.mp4) | `python3 marketing/pitch-video/build_video.py` |
-| `../public/marketing/primer.mp4` | ~5-minute **consumer primer film** embedded in the homepage hero ("Watch a 5-minute primer"). Warm, calm brand film that leads with the safety + privacy promise (no shame, no tracking, encrypted, zero-knowledge Vault) and tours every feature. Cinematic Ken Burns motion; `en-US-JennyNeural` at a soothing pace. | served in-app at `/marketing/primer.mp4` | `python3 marketing/primer/build_primer.py` |
+| `../public/marketing/primer.mp4` | ~4-minute **consumer primer film** embedded in the homepage hero ("Watch a 5-minute primer"). A cinematic Remotion motion-design film (`video-factory/Primer.tsx`): continuous drifting-light backgrounds, kinetic typography, a self-typing search bar, sliding chat bubbles and an animated trend line, paced as a calm emotional arc that leads with the safety + privacy promise (no shame, no tracking, encrypted, zero-knowledge Vault) and tours every feature. `en-US-JennyNeural` at a soothing pace. | served in-app at `/marketing/primer.mp4` | `python3 marketing/primer/build_audio.py && npx tsx scripts/render-primer.ts` |
 
 > **Why a raw link instead of the GitHub file viewer?** The `.pptx` (binary) and `.mp4` (4.9 MB) trigger GitHub's "can't preview this file" page. The `raw.githubusercontent.com` URLs above stream the file directly under its real filename, so the public doesn't need to click through any intermediate page.
 
@@ -46,7 +46,8 @@ pip3 install --user python-pptx edge-tts Pillow
 ```sh
 python3 marketing/pitch-deck/build_deck.py     # investor/PM deck (.pptx)
 python3 marketing/pitch-video/build_video.py   # investor explainer (.mp4)
-python3 marketing/primer/build_primer.py       # homepage consumer primer (.mp4)
+python3 marketing/primer/build_audio.py        # primer narration + per-scene timings
+npx tsx scripts/render-primer.ts               # homepage consumer primer film (.mp4, Remotion)
 ```
 
 **No Mac required.** The `marketing-build` GitHub Actions workflow

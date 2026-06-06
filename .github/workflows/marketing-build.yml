@@ -31,6 +31,11 @@ jobs:
         with:
           python-version: "3.12"
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
       - name: Install system deps (ffmpeg + serif/sans fonts)
         run: |
           sudo apt-get update
@@ -39,9 +44,28 @@ jobs:
       - name: Install Python deps
         run: pip install --upgrade edge-tts Pillow python-pptx lxml
 
+      - name: Install npm deps
+        run: npm ci --no-audit --no-fund
+
+      - name: Cache Remotion / Chrome headless shell
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/remotion
+            node_modules/.cache
+          key: remotion-cache-v1-${{ hashFiles('package-lock.json', 'video-factory/**') }}
+          restore-keys: |
+            remotion-cache-v1-
+
+      # The primer is a Remotion motion-design film. Build the narration track
+      # first (Edge TTS → one voiceover + per-scene timings), then render the
+      # composition silent and mux the audio on. Fonts (Lora/Inter) load via
+      # @remotion/google-fonts so the render is identical to a local Mac build.
       - name: Build primer film
         if: ${{ inputs.targets == 'all' || inputs.targets == 'primer' }}
-        run: python3 marketing/primer/build_primer.py
+        run: |
+          python3 marketing/primer/build_audio.py
+          npx tsx scripts/render-primer.ts
 
       - name: Build investor explainer
         if: ${{ inputs.targets == 'all' || inputs.targets == 'explainer' }}

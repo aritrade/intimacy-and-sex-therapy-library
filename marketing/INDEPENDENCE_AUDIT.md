@@ -16,7 +16,7 @@ Verified 2026-06-06 — the autonomous content engine runs end-to-end with **no 
 | Adversarial eval harness (nightly) | GitHub Actions (`eval-nightly.yml`) | `0 2 * * *` UTC | Off by default for forks (spends real LLM money). |
 | Lighthouse a11y / perf | GitHub Actions (`lighthouse.yml`) | every PR + push to main | Blocks on accessibility / best-practices / SEO regressions. |
 | CI (typecheck + tests) | GitHub Actions (`ci.yml`) | every PR + push to main | Node 22 LTS. |
-| Marketing collateral (deck + explainer + primer film) | GitHub Actions (`marketing-build.yml`) | `workflow_dispatch` | ffmpeg + Edge TTS + Pillow/python-pptx on Ubuntu; commits refreshed `.pptx` / `.mp4` back. No Mac needed to rebuild. |
+| Marketing collateral (deck + explainer + primer film) | GitHub Actions (`marketing-build.yml`) | `workflow_dispatch` | ffmpeg + Edge TTS + Pillow/python-pptx for the deck/explainer; the primer is a Remotion film (`video-factory/Primer.tsx`) rendered via `npx tsx scripts/render-primer.ts` (Lora/Inter load through `@remotion/google-fonts`, Chrome headless shell auto-installed + cached). Commits refreshed `.pptx` / `.mp4` back. No Mac needed to rebuild. |
 
 **Net: the operator's machine is never on the critical path for any production workflow.** Cursor is the editor used to author code; once the code is pushed to `main`, every subsequent step is automated.
 

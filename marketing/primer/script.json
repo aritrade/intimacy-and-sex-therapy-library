@@ -1,0 +1,146 @@
+{
+  "voice": "en-US-JennyNeural",
+  "rate": "-8%",
+  "pitch": "-1Hz",
+  "padSeconds": 1.0,
+  "scenes": [
+    {
+      "id": "01_open",
+      "kind": "hero",
+      "eyebrow": "A safe place to ask",
+      "title": "Some questions are\nhard to ask out loud.",
+      "subtitle": "Here, you can ask them — honestly, and without shame.",
+      "narration": "Some questions are hard to ask out loud. About desire. About intimacy. About the parts of being human we're quietly taught to keep to ourselves. This is a place to ask them \u2014 honestly, and without shame."
+    },
+    {
+      "id": "02_what",
+      "kind": "pills",
+      "eyebrow": "What this is",
+      "title": "A calm, clinician-curated\nspace for honest answers.",
+      "subtitle": "Evidence-based help on intimacy, desire and relationships — for adults in India, and the people who care for them.",
+      "pills": ["Clinician-reviewed", "India-aware", "Always free", "Ad-free"],
+      "narration": "This is the Intimacy and Sex Therapy Library. A calm, clinician-curated space for evidence-based answers about intimacy, desire and relationships \u2014 written for adults in India, and the people who care for them. Always free. Never judgmental."
+    },
+    {
+      "id": "03_comfort",
+      "kind": "hero",
+      "eyebrow": "You're not alone",
+      "title": "Whatever brought you here,\nyou're not the only one.",
+      "subtitle": "Most adults carry a question about intimacy they've never felt safe enough to ask. That's exactly who this is for.",
+      "narration": "And whatever brought you here, you're not the only one. Most adults carry a question about intimacy they've never felt safe enough to ask out loud. That's exactly who this is for."
+    },
+    {
+      "id": "04_privacy",
+      "kind": "cards",
+      "eyebrow": "First, a promise",
+      "title": "What you explore here\nstays yours.",
+      "cards": [
+        { "accent": "teal", "icon": "noTrack", "heading": "No tracking", "body": "No tracking cookies, no selling your data, no following you around the web." },
+        { "accent": "plum", "icon": "lock", "heading": "Encrypted by default", "body": "Your conversations with our companion are encrypted at rest." },
+        { "accent": "warm", "icon": "vault", "heading": "Zero-knowledge Vault", "body": "Turn on Vault mode and even we cannot read what you write." }
+      ],
+      "narration": "Before anything else, a promise. We don't sell your data, and we don't follow you with tracking cookies. Your conversations are encrypted. And with our zero-knowledge Vault mode, even we cannot read them. What you explore here stays yours."
+    },
+    {
+      "id": "05_library",
+      "kind": "search",
+      "eyebrow": "Read & explore",
+      "title": "A living library,\nin plain language.",
+      "subtitle": "Articles, books and research on desire, relationships, the asexual spectrum and LGBTQ+ care — with an AI guide that finds trustworthy reading.",
+      "query": "How do I talk to my partner about low desire?",
+      "narration": "Start with the library \u2014 articles, books and research on desire, relationships, the asexual spectrum and LGBTQ-plus care. Search any topic, and an AI guide gathers trustworthy reading for you, all in plain language."
+    },
+    {
+      "id": "06_paths",
+      "kind": "cards",
+      "eyebrow": "Guided paths",
+      "title": "Not sure where to start?\nFollow a path.",
+      "cards": [
+        { "accent": "teal", "icon": "dot", "heading": "Couples reset", "body": "Rebuild closeness, one honest conversation at a time." },
+        { "accent": "plum", "icon": "dot", "heading": "Anxiety & ED", "body": "Evidence-based steps, minus the panic and the pressure." },
+        { "accent": "warm", "icon": "dot", "heading": "Affirming care", "body": "LGBTQ+ and asexual-inclusive journeys, at your own pace." }
+      ],
+      "narration": "Not sure where to start? Follow a guided path \u2014 a couples reset, navigating a sexless marriage, anxiety and erectile concerns, or LGBTQ-plus affirming care. Step by step, and always at your own pace."
+    },
+    {
+      "id": "07_companion",
+      "kind": "chat",
+      "eyebrow": "Sahay · your companion",
+      "title": "When you'd rather\ntalk it through.",
+      "subtitle": "Warm, India-aware and never judgmental — and always a companion, never a replacement for a clinician.",
+      "chat": [
+        { "me": false, "text": "I don't know how to bring this up with my partner." },
+        { "me": true, "text": "That takes courage to even name. Let's find words that feel true to you — and I'll point you to a clinician who can help." }
+      ],
+      "narration": "When you'd rather talk it through, there's Sahay \u2014 a warm, India-aware companion. She listens without judgment, helps you find the words, and always points you toward real, qualified care. A companion, never a replacement for a clinician."
+    },
+    {
+      "id": "08_chat",
+      "kind": "answer",
+      "eyebrow": "Cite-everything assistant",
+      "title": "Straight answers,\nwith receipts.",
+      "subtitle": "Answers only from the curated, clinician-reviewed library — a citation on every claim. If it doesn't know, it says so.",
+      "answer": "Performance anxiety is common and highly treatable. Evidence supports sensate-focus exercises and CBT-based approaches.",
+      "narration": "Want a straight answer with receipts? Our cite-everything assistant replies only from the curated, clinician-reviewed library, with a citation on every claim. And if it doesn't know, it tells you \u2014 instead of guessing."
+    },
+    {
+      "id": "09_assess",
+      "kind": "assess",
+      "eyebrow": "Private self-assessments",
+      "title": "Quietly wondering\nwhere you stand?",
+      "subtitle": "Validated tools clinicians use — scored on your device, kept to yourself, and never shared. A gentle reflection helps you make sense of them.",
+      "narration": "Quietly wondering where you stand? Take a private self-assessment \u2014 the same validated tools clinicians use. Your results are scored on your device, kept to yourself, and never shared. A gentle reflection helps you make sense of them."
+    },
+    {
+      "id": "10_findhelp",
+      "kind": "cards",
+      "eyebrow": "Find help",
+      "title": "When you're ready\nfor a human.",
+      "cards": [
+        { "accent": "teal", "icon": "pin", "heading": "Clinicians near you", "body": "Sex therapists and counsellors, surfaced with care and context." },
+        { "accent": "plum", "icon": "pin", "heading": "Affirming spaces", "body": "LGBTQ+ and asexual-friendly communities — you belong here." },
+        { "accent": "warm", "icon": "pin", "heading": "Real options", "body": "Curated, flagged when needed, and refreshed so they stay trustworthy." }
+      ],
+      "narration": "And when you're ready for a human, the Find Help hub points you to clinicians and communities \u2014 including affirming, LGBTQ-plus and asexual-friendly spaces. Real options, chosen with care."
+    },
+    {
+      "id": "11_myths",
+      "kind": "myth",
+      "eyebrow": "Unlearn the myths",
+      "title": "Replace shame with\ncalm, sourced truth.",
+      "subtitle": "A quick, playful \u201cmyth or fact\u201d turns misinformation into understanding — one gentle card at a time.",
+      "mythText": "\u201cYou should always be in the mood for your partner.\u201d",
+      "factText": "Desire naturally ebbs and flows. That's healthy.",
+      "narration": "We also make unlearning feel good. A quick, playful myth-or-fact gently replaces shame and misinformation with calm, sourced truth \u2014 one card at a time."
+    },
+    {
+      "id": "12_trust",
+      "kind": "list",
+      "eyebrow": "Why you can trust it",
+      "title": "Reviewed by clinicians.\nHonest about its limits.",
+      "items": [
+        "Every resource is screened by an advisory board of qualified clinicians before it goes live.",
+        "A public model card spells out exactly what our AI can — and cannot — do.",
+        "Sources are cited, crisis routing is India-first, and nothing here replaces professional care."
+      ],
+      "narration": "Everything here is reviewed by an advisory board of qualified clinicians before it goes live. And we're honest about our limits \u2014 a public model card spells out exactly what our AI can, and cannot, do."
+    },
+    {
+      "id": "13_care",
+      "kind": "hero",
+      "eyebrow": "Why we built this",
+      "title": "This isn't about clicks.\nIt's about you.",
+      "subtitle": "If a moment ever feels heavier than information can hold, we gently route you to crisis support that can help — right now.",
+      "narration": "Because this was never about clicks. It's about your wellbeing. If a moment ever feels heavier than information can hold, we route you \u2014 gently, and India-first \u2014 to crisis support that can help right now."
+    },
+    {
+      "id": "14_close",
+      "kind": "close",
+      "title": "No shame. No tracking.\nNo cost.",
+      "subtitle": "Honest, caring help — here whenever you're ready.",
+      "wordmark": "Intimacy & Sex Therapy Library",
+      "domain": "intimacy-and-sex-therapy-library.vercel.app",
+      "narration": "No shame. No tracking. No cost. Just honest, caring help, here whenever you're ready. This is the Intimacy and Sex Therapy Library."
+    }
+  ]
+}
