@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { Instrument } from "@/lib/assessments/instruments";
 import type { ScoringResult } from "@/lib/assessments/scoring";
 import { trackEvent } from "./Analytics";
+import { recordResult } from "./assessments/results-store";
 
 type Response = { instrumentId: string; name: string; result: ScoringResult; citation: string };
 
@@ -40,6 +41,20 @@ export function AssessmentForm({ instrument }: { instrument: Instrument }) {
         trackEvent("assessment_completed", {
           instrument: instrument.id,
           flag: json.result.flag,
+        });
+        // Browser-only: lets the Screening Companion pull results together.
+        // Stores the scored summary, never the raw answers.
+        recordResult({
+          instrumentId: instrument.id,
+          name: instrument.name,
+          shortName: instrument.shortName,
+          rawScore: json.result.rawScore,
+          maxScore: json.result.maxScore,
+          scoreSuffix: json.result.scoreSuffix,
+          severityLabel: json.result.severityLabel,
+          flag: json.result.flag,
+          crisisSignal: !!json.result.crisisSignal,
+          at: Date.now(),
         });
         // Best-effort save for signed-in users; never blocks the UI.
         // 401 just means the user isn't signed in — we silently ignore.
@@ -141,9 +156,12 @@ function ResultPanel({ result, onReset }: { result: Response; onReset: () => voi
       <p className="pill w-fit">{name}</p>
       <h2 className="mt-3 font-serif text-2xl text-ink-900">{r.severityLabel}</h2>
       <p className="mt-1 text-sm text-ink-600">
-        Score: <strong>{r.rawScore}</strong> / {r.maxScore}
+        Score: <strong>{r.rawScore}{r.scoreSuffix}</strong> / {r.maxScore}{r.scoreSuffix}
       </p>
       <p className="mt-3 text-ink-800 max-w-prose leading-relaxed">{r.interpretation}</p>
+      <p className="mt-2 text-xs text-ink-400">
+        This is an educational screening result, not a diagnosis or treatment.
+      </p>
 
       {r.crisisSignal && (
         <div className="mt-4 rounded-xl border border-warn/50 bg-warn/15 p-3 text-sm text-ink">
@@ -167,8 +185,11 @@ function ResultPanel({ result, onReset }: { result: Response; onReset: () => voi
         <p className="mt-2 italic">{citation}</p>
       </details>
 
-      <div className="mt-5 flex gap-3">
-        <button type="button" onClick={onReset} className="btn-secondary">
+      <div className="mt-5 flex flex-wrap gap-3">
+        <a href="/assessments/reflection" className="btn-secondary">
+          Get an AI reflection →
+        </a>
+        <button type="button" onClick={onReset} className="btn-ghost">
           Take it again
         </button>
         <a href="/assessments" className="btn-ghost">All assessments</a>

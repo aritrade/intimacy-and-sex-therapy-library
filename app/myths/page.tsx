@@ -1,18 +1,10 @@
 import myths from "@/content/myths.json";
-
-type MythEntry = {
-  id: string;
-  myth: string;
-  context_in?: string;
-  fact: string;
-  what_helps?: string;
-  sources?: string[];
-};
+import { MythGame, type MythEntry } from "@/components/myths/MythGame";
 
 export const metadata = {
   title: "Myths vs. Facts · Intimacy & Sex Therapy Library",
   description:
-    "Common misconceptions about sex and intimacy — including India-specific myths — addressed with evidence-backed corrections.",
+    "Test yourself with a quick Myth-or-Fact game, then read the evidence — including India-specific misconceptions about sex and intimacy, reviewed by a credentialed clinician.",
 };
 
 export default function MythsPage() {
@@ -32,6 +24,13 @@ export default function MythsPage() {
         </p>
       </header>
 
+      <section aria-label="Myth or fact game" className="mb-12">
+        <MythGame entries={entries} />
+      </section>
+
+      <h2 id="all-myths" className="font-serif text-2xl text-ink-900 mb-4 scroll-mt-20">
+        Every myth, in full
+      </h2>
       <ol className="space-y-4">
         {entries.map((m) => (
           <li key={m.id} id={m.id} className="card p-5">

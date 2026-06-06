@@ -1,16 +1,42 @@
-import { INSTRUMENTS, type AssessmentId } from "./instruments";
+import { INSTRUMENTS, type AssessmentId, type Instrument } from "./instruments";
 
-export type Severity =
-  | "minimal"
-  | "mild"
-  | "moderate"
-  | "moderately_severe"
-  | "severe"
-  | "low"
-  | "moderate_satisfaction"
-  | "high";
+export type Severity = string;
 
 export type Flag = "safe" | "monitor" | "clinician_recommended" | "urgent";
+
+/**
+ * A single interpretation band, keyed by an inclusive upper bound on the
+ * (reverse-corrected, optionally transformed) raw score. Bands are evaluated
+ * in array order; the first whose `upTo` is >= the score wins.
+ */
+export type Band = {
+  upTo: number;
+  severity: string;
+  label: string;
+  flag: Flag;
+  interpretation: string;
+};
+
+/**
+ * Declarative scoring config carried on an Instrument. Lets us add new
+ * validated instruments without hand-writing a scorer for each — we only
+ * encode the instrument's own published cutoffs.
+ */
+export type ScoringConfig = {
+  /** "symptom": higher = more symptoms. "wellbeing": higher = better. */
+  kind: "symptom" | "wellbeing";
+  /** Item ids that are reverse-scored. */
+  reverseItemIds?: string[];
+  /** Reverse formula: newValue = reverseAround - value (e.g. 0-4 scale → 4). */
+  reverseAround?: number;
+  /** Items that, if endorsed, surface crisis resources. */
+  crisisItemIds?: string[];
+  /** Optional raw-score multiplier (e.g. WHO-5 reports raw × 4 as a %). */
+  multiplier?: number;
+  /** Suffix appended after the score in the UI (e.g. "%"). */
+  scoreSuffix?: string;
+  bands: Band[];
+};
 
 export type ScoringResult = {
   rawScore: number;
@@ -19,13 +45,16 @@ export type ScoringResult = {
   severityLabel: string;
   flag: Flag;
   interpretation: string;
-  /** True if PHQ-9 item 9 was non-zero. Used to surface crisis resources. */
+  /** True if a crisis-signal item was endorsed. Surfaces crisis resources. */
   crisisSignal: boolean;
+  /** Optional display suffix for the score (e.g. "%"). */
+  scoreSuffix?: string;
 };
 
 type Answers = Record<string, number>;
 
 export function score(id: AssessmentId, answers: Answers): ScoringResult {
+  // Bespoke scorers retained for the original three instruments.
   switch (id) {
     case "phq9":
       return scorePHQ9(answers);
@@ -33,7 +62,59 @@ export function score(id: AssessmentId, answers: Answers): ScoringResult {
       return scoreGAD7(answers);
     case "nsss-s":
       return scoreNSSS(answers);
+    default:
+      break;
   }
+  const inst = INSTRUMENTS[id];
+  if (inst?.scoring) return scoreByBands(inst, answers);
+  throw new Error(`No scoring configured for assessment "${id}".`);
+}
+
+/** Generic scorer driven by an instrument's declarative `scoring` config. */
+function scoreByBands(inst: Instrument, answers: Answers): ScoringResult {
+  const cfg = inst.scoring!;
+  const reverse = new Set(cfg.reverseItemIds ?? []);
+
+  let raw = 0;
+  let maxRaw = 0;
+  for (const item of inst.items) {
+    const values = item.options.map((o) => o.value);
+    const optMax = Math.max(...values);
+    const optMin = Math.min(...values);
+    const v = answers[item.id] ?? optMin;
+    if (reverse.has(item.id) && cfg.reverseAround != null) {
+      raw += cfg.reverseAround - v;
+      maxRaw += cfg.reverseAround - optMin;
+    } else {
+      raw += v;
+      maxRaw += optMax;
+    }
+  }
+
+  const mult = cfg.multiplier ?? 1;
+  const display = raw * mult;
+  const maxDisplay = maxRaw * mult;
+
+  const band =
+    cfg.bands.find((b) => display <= b.upTo) ?? cfg.bands[cfg.bands.length - 1];
+
+  const crisisSignal = (cfg.crisisItemIds ?? []).some((id) => (answers[id] ?? 0) > 0);
+  const flag: Flag = crisisSignal && rank(band.flag) < rank("urgent") ? "urgent" : band.flag;
+
+  return {
+    rawScore: display,
+    maxScore: maxDisplay,
+    severity: band.severity,
+    severityLabel: band.label,
+    flag,
+    interpretation: band.interpretation,
+    crisisSignal,
+    scoreSuffix: cfg.scoreSuffix,
+  };
+}
+
+function rank(f: Flag): number {
+  return { safe: 0, monitor: 1, clinician_recommended: 2, urgent: 3 }[f];
 }
 
 function sumAll(items: Array<{ id: string }>, answers: Answers): number {

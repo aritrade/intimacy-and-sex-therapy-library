@@ -6,8 +6,8 @@ import { INSTRUMENTS } from "@/lib/assessments/instruments";
 export const runtime = "nodejs";
 
 const Body = z.object({
-  instrumentId: z.enum(["phq9", "gad7", "nsss-s"]),
-  answers: z.record(z.string(), z.number().int().min(0).max(5)),
+  instrumentId: z.string().refine((id) => id in INSTRUMENTS, "unknown_instrument"),
+  answers: z.record(z.string(), z.number().int().min(0).max(10)),
 });
 
 /**
@@ -24,7 +24,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "invalid_body" }, { status: 400 });
   }
   const { instrumentId, answers } = parsed.data;
-  const inst = INSTRUMENTS[instrumentId];
+  const inst = INSTRUMENTS[instrumentId as keyof typeof INSTRUMENTS];
 
   // Validate that all expected items are present
   const missing = inst.items.filter((it) => answers[it.id] === undefined);
@@ -35,7 +35,7 @@ export async function POST(req: Request) {
     );
   }
 
-  const result = score(instrumentId, answers);
+  const result = score(instrumentId as keyof typeof INSTRUMENTS, answers);
   return NextResponse.json({
     instrumentId,
     name: inst.name,

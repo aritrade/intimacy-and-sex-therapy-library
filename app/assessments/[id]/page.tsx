@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { INSTRUMENTS, type AssessmentId } from "@/lib/assessments/instruments";
 import { AssessmentForm } from "@/components/AssessmentForm";
 
-const VALID: AssessmentId[] = ["phq9", "gad7", "nsss-s"];
+const VALID = Object.keys(INSTRUMENTS) as AssessmentId[];
 
 export function generateStaticParams() {
   return VALID.map((id) => ({ id }));

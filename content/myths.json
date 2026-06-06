@@ -88,6 +88,83 @@
         "AVEN — Asexual Visibility and Education Network.",
         "Bogaert, A. F. (2015). Understanding Asexuality."
       ]
+    },
+    {
+      "id": "masturbation-harm",
+      "myth": "Masturbation causes weakness, infertility, acne, or long-term harm.",
+      "context_in": "A persistent belief worldwide and in India, often tied to 'dhat' anxiety and moral messaging.",
+      "fact": "Masturbation is a common, normal behaviour across ages and genders with no proven physical harm. It does not cause infertility, blindness, acne, hair loss, or weakness. For many people it supports sleep, stress relief, and body awareness.",
+      "what_helps": "If guilt or compulsive patterns are causing distress, a sex therapist can help separate moral conflict from genuine loss of control — both are addressable.",
+      "sources": [
+        "Robbins, C. L., et al. (2011). Prevalence of masturbation and associated factors. Arch Pediatr Adolesc Med.",
+        "Planned Parenthood — Masturbation health information."
+      ]
+    },
+    {
+      "id": "size-matters",
+      "myth": "Penis size is the main thing that determines a partner's satisfaction.",
+      "context_in": "Heavily reinforced by porn and advertising for 'enhancement' products.",
+      "fact": "Most studies find that penis size is a minor factor in partner satisfaction compared with communication, emotional connection, foreplay, and technique. The vagina's most nerve-rich areas are in the outer third, and the clitoris — not depth — is central to most orgasms.",
+      "what_helps": "Focus on communication and broadening your definition of sex beyond penetration. Anxiety about size responds well to psychoeducation.",
+      "sources": [
+        "Veale, D., et al. (2015). Am I normal? A systematic review of penis size. BJU Int.",
+        "Štulhofer, A. (2006). How (un)important is penis size? J Sex Med."
+      ]
+    },
+    {
+      "id": "women-low-desire",
+      "myth": "Women naturally don't want or enjoy sex as much as men.",
+      "context_in": "A gender script that leaves many women's desire unexamined and many men confused by 'mismatched' libido.",
+      "fact": "Desire varies enormously within every gender. Many women experience 'responsive' desire — arousal that builds in response to a good context rather than appearing spontaneously. That is a normal pattern, not a lack of interest. Context, stress, and relationship quality strongly shape desire for everyone.",
+      "what_helps": "Learning the responsive-desire model (Emily Nagoski's work) reframes a lot of needless worry. Persistent distress about desire is treatable.",
+      "sources": [
+        "Basson, R. (2000). The female sexual response: a different model. J Sex Marital Ther.",
+        "Nagoski, E. (2015). Come As You Are."
+      ]
+    },
+    {
+      "id": "stis-obvious",
+      "myth": "You'd obviously know if you or a partner had an STI.",
+      "context_in": "A dangerous assumption that drives skipped testing and condom-free sex.",
+      "fact": "Many STIs — including chlamydia, gonorrhoea, HPV, and early HIV — frequently cause no symptoms at all, especially early on. The only way to know your status is to test. Untreated infections can affect fertility and health.",
+      "what_helps": "Get tested between partners and ask new partners about their last test. Condoms substantially reduce transmission risk.",
+      "sources": [
+        "WHO (2023). Sexually transmitted infections fact sheet.",
+        "CDC — STI screening recommendations."
+      ]
+    },
+    {
+      "id": "menopause-end",
+      "myth": "Menopause (or ageing) means the end of sex and desire.",
+      "context_in": "A widespread assumption that quietly writes off older adults' sexuality.",
+      "fact": "Many people remain sexually active and satisfied well into later life. Menopause can change lubrication and sensation due to lower oestrogen, but these are treatable, and desire is shaped by far more than hormones. Sex often becomes less performance-focused and more connection-focused with age.",
+      "what_helps": "Vaginal moisturisers, lubricants, and (where appropriate) local oestrogen help with dryness. A clinician can review options including for libido.",
+      "sources": [
+        "Lindau, S. T., et al. (2007). A study of sexuality and health among older adults. NEJM.",
+        "NAMS (North American Menopause Society) position statements."
+      ]
+    },
+    {
+      "id": "orgasm-every-time",
+      "myth": "Good sex means both partners orgasm every time, ideally together.",
+      "context_in": "A performance standard set largely by film and porn.",
+      "fact": "Orgasm is not the only measure of good sex, and simultaneous orgasm is uncommon. Many people — especially women — don't orgasm from penetration alone, and that is normal. Pleasure, closeness, and play matter as much as climax.",
+      "what_helps": "Take orgasm off the scoreboard. Curiosity and communication about what feels good reduce performance pressure for everyone.",
+      "sources": [
+        "Frederick, D. A., et al. (2018). Differences in orgasm frequency. Arch Sex Behav.",
+        "Herbenick, D., et al. (2010). National Survey of Sexual Health and Behavior."
+      ]
+    },
+    {
+      "id": "lube-problem",
+      "myth": "Needing lubricant means you're not aroused enough or something's wrong.",
+      "context_in": "Leads people to avoid lube and push through discomfort.",
+      "fact": "Natural lubrication varies with hydration, hormones, cycle phase, medications, stress, and age — it isn't a reliable 'arousal meter'. Using lubricant is common, safe, and often makes sex more comfortable and pleasurable. It's a tool, not a verdict.",
+      "what_helps": "Use a body-safe lubricant (water- or silicone-based). If dryness is persistent and bothersome, a clinician can check for causes like medication side effects.",
+      "sources": [
+        "Herbenick, D., et al. (2011). Association of lubricant use with sexual pleasure. J Sex Med.",
+        "ACOG — Experiencing vaginal dryness."
+      ]
     }
   ]
 }
