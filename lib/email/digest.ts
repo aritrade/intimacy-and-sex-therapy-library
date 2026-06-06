@@ -122,9 +122,10 @@ export async function sendDigest(opts: {
   };
   if (opts.dryRun) return result;
 
-  // Resend's standard rate limit is ~2 req/s; SES production is much higher.
-  // Default conservatively per active provider so the loop doesn't get 429'd.
-  const defaultPerSecond = emailProvider() === "resend" ? 2 : 5;
+  // SES production allows high throughput; Resend (~2/s) and consumer SMTP
+  // like Gmail want a gentle rate. Default conservatively per provider so the
+  // loop doesn't get throttled/blocked.
+  const defaultPerSecond = emailProvider() === "ses" ? 5 : 2;
   const perSecond = Math.max(1, opts.maxPerSecond ?? defaultPerSecond);
   const gapMs = Math.ceil(1000 / perSecond);
 
