@@ -72,12 +72,19 @@ async function main() {
   process.stdout.write("\n");
 
   if (!existsSync(VO)) throw new Error(`narration missing at ${VO}`);
-  console.log("[primer] muxing narration…");
+  console.log("[primer] muxing narration + web encode…");
+  // IMPORTANT: map streams explicitly. Remotion emits a SILENT audio track on
+  // the silent render, so without `-map 1:a:0` ffmpeg's default selection would
+  // pick that empty track and the film would have no sound. We also re-encode
+  // the video here (crf 23) so the homepage gets a web-friendly ~30 MB file in
+  // one pass instead of the ~65 MB crf-18 master.
   execFileSync(
     "ffmpeg",
     [
       "-y", "-i", SILENT, "-i", VO,
-      "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
+      "-map", "0:v:0", "-map", "1:a:0",
+      "-c:v", "libx264", "-preset", "slow", "-crf", "23", "-pix_fmt", "yuv420p",
+      "-c:a", "aac", "-b:a", "160k",
       "-shortest", "-movflags", "+faststart", OUT,
     ],
     { stdio: "ignore" },
