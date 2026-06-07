@@ -21,8 +21,15 @@ name: daily-generate
 
 on:
   schedule:
-    # 05:00 IST = 23:30 UTC (matches the retired Vercel cron schedule).
-    - cron: "30 23 * * *"
+    # Target ~04:07 IST = 22:37 UTC. We intentionally pick an EARLIER, ODD
+    # minute rather than the obvious 23:30 UTC (= 05:00 IST): GitHub delays
+    # scheduled jobs at congested slots (top-of-hour, :30, midnight-UTC) by
+    # 1–3 hours, so the old 23:30 cron consistently ran ~01:30 UTC (~07:00
+    # IST). Scheduling ~1h earlier on an off-peak minute absorbs that drift so
+    # drafts are usually ready for review by ~05:00 IST. (Cron is best-effort
+    # on GitHub Actions — there is no on-time guarantee; trigger manually via
+    # workflow_dispatch if you ever need drafts immediately.)
+    - cron: "37 22 * * *"
   workflow_dispatch:
 
 permissions:
