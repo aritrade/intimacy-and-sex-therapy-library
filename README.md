@@ -11,6 +11,18 @@ human-in-the-loop approval gate.
 
 ---
 
+## Watch the primer
+
+A ~4-minute cinematic tour of the platform — what it is, our privacy promise
+(no shame, no tracking, encrypted, zero-knowledge Vault), and a gentle walk
+through every feature. Press play:
+
+<video src="https://raw.githubusercontent.com/aritrade/intimacy-and-sex-therapy-library/main/public/marketing/primer.mp4" poster="https://raw.githubusercontent.com/aritrade/intimacy-and-sex-therapy-library/main/public/marketing/primer-poster.jpg" controls muted width="100%"></video>
+
+<p align="center"><em>Player not showing? <a href="https://raw.githubusercontent.com/aritrade/intimacy-and-sex-therapy-library/main/public/marketing/primer.mp4">Watch / download the primer&nbsp;(MP4)</a> &middot; or experience it on the <a href="https://intimacy-and-sex-therapy-library.vercel.app">live site</a>.</em></p>
+
+---
+
 ## Live surfaces
 
 | Surface          | URL                                                          |

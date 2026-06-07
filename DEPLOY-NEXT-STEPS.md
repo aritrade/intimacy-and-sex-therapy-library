@@ -14,7 +14,7 @@ The whole sequence takes about 7 minutes once you have the API keys.
 
 Repo is live and CI is green:
 
-- **Repo**: <https://github.com/aritrade/intimacy-and-sex-therapy-library> (private)
+- **Repo**: <https://github.com/aritrade/intimacy-and-sex-therapy-library> (public)
 - **Branch**: `main` (6 commits, ~250 files, no secrets staged)
 - **CI**: typecheck + lint, unit tests (109 ✓), integration tests
   (postgres + pgvector, 21/22 ✓ — one flaky spec skipped with TODO),
