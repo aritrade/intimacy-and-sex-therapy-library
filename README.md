@@ -21,14 +21,6 @@ through every feature. **Click to play:**
 
 <p align="center"><em>The thumbnail opens GitHub's built-in video player. Prefer a direct file? <a href="https://raw.githubusercontent.com/aritrade/intimacy-and-sex-therapy-library/main/public/marketing/primer.mp4">Watch / download the primer&nbsp;(MP4)</a> &middot; or experience it on the <a href="https://intimacy-and-sex-therapy-library.vercel.app">live site</a>.</em></p>
 
-<!-- EMBED-TEST-START -->
-
-https://raw.githubusercontent.com/aritrade/intimacy-and-sex-therapy-library/main/public/marketing/primer.mp4
-
-https://github.com/aritrade/intimacy-and-sex-therapy-library/raw/main/public/marketing/primer.mp4
-
-<!-- EMBED-TEST-END -->
-
 ---
 
 ## Live surfaces
