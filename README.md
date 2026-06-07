@@ -15,11 +15,11 @@ human-in-the-loop approval gate.
 
 A ~4-minute cinematic tour of the platform — what it is, our privacy promise
 (no shame, no tracking, encrypted, zero-knowledge Vault), and a gentle walk
-through every feature. Press play:
+through every feature. **Click to play:**
 
-<video src="https://raw.githubusercontent.com/aritrade/intimacy-and-sex-therapy-library/main/public/marketing/primer.mp4" poster="https://raw.githubusercontent.com/aritrade/intimacy-and-sex-therapy-library/main/public/marketing/primer-poster.jpg" controls muted width="100%"></video>
+[![Watch the primer — a 4-minute cinematic tour of the Intimacy & Sex Therapy Library](https://raw.githubusercontent.com/aritrade/intimacy-and-sex-therapy-library/main/public/marketing/primer-thumb.jpg)](https://github.com/aritrade/intimacy-and-sex-therapy-library/blob/main/public/marketing/primer.mp4)
 
-<p align="center"><em>Player not showing? <a href="https://raw.githubusercontent.com/aritrade/intimacy-and-sex-therapy-library/main/public/marketing/primer.mp4">Watch / download the primer&nbsp;(MP4)</a> &middot; or experience it on the <a href="https://intimacy-and-sex-therapy-library.vercel.app">live site</a>.</em></p>
+<p align="center"><em>The thumbnail opens GitHub's built-in video player. Prefer a direct file? <a href="https://raw.githubusercontent.com/aritrade/intimacy-and-sex-therapy-library/main/public/marketing/primer.mp4">Watch / download the primer&nbsp;(MP4)</a> &middot; or experience it on the <a href="https://intimacy-and-sex-therapy-library.vercel.app">live site</a>.</em></p>
 
 ---
 
