@@ -293,7 +293,7 @@ TTS_PROVIDER=edge
 # the still-portrait Ken-Burns composition so videos still ship.
 AVATAR_PROVIDER=github-actions
 GH_AVATAR_TOKEN=<fine-grained PAT — Actions: read/write on this repo>
-GH_AVATAR_REPO=productdecoded/intimacy-and-sex-therapy-library
+GH_AVATAR_REPO=aritrade/intimacy-and-sex-therapy-library
 
 # Instagram
 INSTAGRAM_BUSINESS_ACCOUNT_ID=<from step 2>
@@ -763,7 +763,7 @@ statuses, so re-rendering doesn't silently undo your approvals.
 | LinkedIn / Twitter fail silently in audit            | Cross-posters are best-effort                               | Check creds + scopes. Failures don't flip the draft to `failed`.                             |
 | Render log shows `avatar refused (cap_exceeded)`     | Today's projected Replicate spend > `REPLICATE_MAX_USD_PER_DAY` | Either raise the cap in `.env`/Vercel, wait until UTC midnight, or accept the stock fallback. |
 | Render log shows `avatar refused (missing_token)`    | `GH_AVATAR_TOKEN` (or `REPLICATE_API_TOKEN`) not set         | Add the PAT to `.env` + Vercel as documented in the Narrator section. Pipeline falls back to still-portrait. |
-| Render log shows `avatar refused (missing_github_repo)` | `GH_AVATAR_REPO` not set or wrong format                  | Set to `<owner>/<repo>` — usually `productdecoded/intimacy-and-sex-therapy-library`.            |
+| Render log shows `avatar refused (missing_github_repo)` | `GH_AVATAR_REPO` not set or wrong format                  | Set to `<owner>/<repo>` — usually `aritrade/intimacy-and-sex-therapy-library`.            |
 | Render log shows `avatar refused (polling_timeout)`  | GH Actions run took >25 min (cold checkpoint download + slow runner) | Open the run URL printed in the log. Re-trigger if it eventually succeeded; bump `AVATAR_RENDER_MAX_WAIT_SECONDS` if cold runs consistently exceed 25 min. |
 | Render log shows `avatar refused (prediction_failed)` | Workflow run finished with conclusion=failure (or Replicate model errored) | Open the run URL in the error; check the "Run SadTalker inference" step logs. Common: GH cache miss + slow torch install. Re-trigger. |
 | Render log shows `avatar refused (artifact_not_found)` | Workflow succeeded but didn't upload the `avatar-<id>` artifact | Inspect the run's "Upload avatar artifact" step. The MP4 may have rendered but failed `if-no-files-found: error` because SadTalker produced zero output. |
