@@ -767,6 +767,96 @@ statuses, so re-rendering doesn't silently undo your approvals.
 | Render log shows `avatar refused (polling_timeout)`  | GH Actions run took >25 min (cold checkpoint download + slow runner) | Open the run URL printed in the log. Re-trigger if it eventually succeeded; bump `AVATAR_RENDER_MAX_WAIT_SECONDS` if cold runs consistently exceed 25 min. |
 | Render log shows `avatar refused (prediction_failed)` | Workflow run finished with conclusion=failure (or Replicate model errored) | Open the run URL in the error; check the "Run SadTalker inference" step logs. Common: GH cache miss + slow torch install. Re-trigger. |
 | Render log shows `avatar refused (artifact_not_found)` | Workflow succeeded but didn't upload the `avatar-<id>` artifact | Inspect the run's "Upload avatar artifact" step. The MP4 may have rendered but failed `if-no-files-found: error` because SadTalker produced zero output. |
+| Public pages 500 with `Digest: <n>`; `/api/health` shows `db.ok=false` with `remaining connection slots are reserved for roles with the SUPERUSER attribute` | Neon connection-slot exhaustion (Postgres error `53300`) | See **"Database connection exhaustion"** below. Drain idle backends for instant relief; ensure the connection-pool fix is deployed; switch `DATABASE_URL` to the Neon `-pooler` endpoint. |
+| Vercel deploy fails at build with `Export encountered errors on .../blog/[slug]` + the same `53300` slot error | Build-time prerender of `force-static` blog pages queried a connection-starved DB | Drain idle backends (below) to free slots, then redeploy. The blog fetchers now degrade to an empty reading list on DB error, so this shouldn't recur — but a fully-saturated DB can still slow the build. |
+
+---
+
+## Database connection exhaustion (Neon slot limit)
+
+**Incident 2026-06-08.** Public DB-backed pages (`/catalog`, `/library`,
+`/admin/drafts/*`) returned `Application error: a server-side exception
+has occurred` (Next digest `4244193326`). `/api/health` reported
+`db.ok=false` with Postgres error `53300`:
+`remaining connection slots are reserved for roles with the SUPERUSER attribute`.
+
+### Root cause (two compounding bugs)
+
+1. **Connection leak (`lib/db/client.ts`).** The `postgres-js` client/db were
+   cached on `global` *only when `NODE_ENV !== "production"`*. In production
+   every `db.*` proxy access rebuilt a fresh pool (`max: 8`), so connections
+   accumulated across requests and warm serverless instances until Neon's
+   slot budget (`max_connections`, with some slots reserved for SUPERUSER) was
+   exhausted. Diagnosis: `pg_stat_activity` showed ~785 **idle** backends, each
+   Vercel instance (`10.37.x.x`) holding 10–18 connections.
+2. **Build deadlock (`app/blog/[slug]/page.tsx`).** `next build` prerenders the
+   `force-static` blog pages, which query the DB. With the DB already starved,
+   those queries threw and failed the whole build (`Export encountered
+   errors → exit 1`) — so the deploy that *fixes* the leak couldn't ship.
+   (GitHub Actions CI passed because it builds against a fresh CI database;
+   only Vercel's build hit the saturated production DB.)
+
+### The fix (deployed)
+
+- `lib/db/client.ts`: cache the client/db on `global` in **all** environments
+  (this is the actual leak fix — the pool was being rebuilt on every `db.*`
+  access in production). Pool sizing: `max: 10` per warm Vercel instance (`5`
+  locally), `idle_timeout: 20`, `connect_timeout: 10`, keep `prepare: false`.
+- `app/blog/[slug]/page.tsx`: wrap the build-time resource lookups in
+  try/catch and degrade to an empty "Curated reading" list, so a transient DB
+  issue can never fail a build again.
+
+> **⚠ Pitfall — do NOT set `max: 1`.** The first cut of this fix set the pool to
+> `max: 1` (reasoning "serverless serves one request at a time"). That was
+> wrong and caused a **second incident the same day**: DB-backed pages
+> (`/catalog`, `/library`) fan out ~5 queries via `Promise.all`, and Vercel
+> instances *do* serve concurrent requests — so everything queued single-file
+> on the one connection. `/catalog` went from sub-second to **16s+**, then
+> intermittently hit the 60s gateway timeout (502/timeout), while static pages
+> stayed fast. The leak was never the pool *size* — it was the missing `global`
+> cache. Keep `max` at ~10: large enough that a request's parallel queries run
+> concurrently, small enough (with `idle_timeout`) to stay well under Neon's
+> slot budget. Symptom to recognise: homepage fast, DB-backed pages slow/timing
+> out, `pg_stat_activity` shows few connections and no long-running queries
+> (i.e. the DB is idle but requests are starved for a connection).
+
+### Break-glass — drain leaked idle connections (instant relief)
+
+When slots are exhausted and pages are 500ing, terminate **idle** backends to
+free slots immediately (safe — never touches `active` queries). Run from the
+repo with the production `DATABASE_URL` in `.env`:
+
+```bash
+npx tsx -e "
+import 'dotenv/config'; import postgres from 'postgres';
+const sql = postgres(process.env.DATABASE_URL, { max: 1, prepare: false, connect_timeout: 10 });
+(async () => {
+  const k = await sql\`SELECT count(*)::int n FROM (
+    SELECT pg_terminate_backend(pid) FROM pg_stat_activity
+    WHERE datname = current_database() AND pid <> pg_backend_pid() AND state = 'idle'
+  ) t\`;
+  const t = await sql\`SELECT count(*)::int n FROM pg_stat_activity\`;
+  console.log('terminated idle:', k[0].n, 'remaining backends:', t[0].n);
+  await sql.end(); process.exit(0);
+})();
+"
+```
+
+If the DB is *fully* saturated you may need to retry the connect a few times
+(slots reserved for SUPERUSER intermittently free up). As a last resort,
+**restart the Neon compute** from <https://console.neon.tech> — it drops all
+connections instantly. After draining, confirm with `curl -s
+$DEPLOY_URL/api/health | jq '.subsystems.db'` (expect `ok: true`) and watch
+`SELECT count(*) FROM pg_stat_activity` settle low and stay low (proves the
+deployed pool fix isn't re-leaking).
+
+### Durable hardening (recommended)
+
+Point `DATABASE_URL` (Vercel → Settings → Environment Variables, Production) at
+Neon's **pooled** endpoint — insert `-pooler` into the host, e.g.
+`ep-xxxx-pooler.<region>.aws.neon.tech`. PgBouncer multiplexes many clients
+over few Postgres connections; our `prepare: false` is already PgBouncer-
+compatible. Redeploy after changing.
 
 ---
 
