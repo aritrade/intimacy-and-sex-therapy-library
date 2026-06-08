@@ -304,55 +304,69 @@ async function resolveSlug(slug: string): Promise<Resolved> {
 
 async function fetchResourcesForTerm(term: string): Promise<ResourceCard[]> {
   if (!process.env.DATABASE_URL) return [];
-  // Title or summary contains the term — keep it cheap; we only need
-  // a small list for SEO.
-  const rows = await db
-    .select({
-      id: resources.id,
-      title: resources.title,
-      externalUrl: resources.externalUrl,
-      summary: resources.summary,
-      authors: resources.authors,
-      publishedAt: resources.publishedAt,
-    })
-    .from(resources)
-    .where(
-      and(
-        eq(resources.isPublished, true),
-        sql`(${resources.title} ILIKE ${"%" + term + "%"} OR ${resources.summary} ILIKE ${"%" + term + "%"})`,
-      ),
-    )
-    .orderBy(desc(resources.publishedAt))
-    .limit(8);
+  // The "Curated reading" list is a non-essential SEO enrichment; the page's
+  // primary content is the curator-authored glossary JSON. Never let a
+  // transient DB issue (e.g. connection saturation) fail a static build or an
+  // ISR revalidate — degrade to no related reading instead.
+  try {
+    // Title or summary contains the term — keep it cheap; we only need
+    // a small list for SEO.
+    const rows = await db
+      .select({
+        id: resources.id,
+        title: resources.title,
+        externalUrl: resources.externalUrl,
+        summary: resources.summary,
+        authors: resources.authors,
+        publishedAt: resources.publishedAt,
+      })
+      .from(resources)
+      .where(
+        and(
+          eq(resources.isPublished, true),
+          sql`(${resources.title} ILIKE ${"%" + term + "%"} OR ${resources.summary} ILIKE ${"%" + term + "%"})`,
+        ),
+      )
+      .orderBy(desc(resources.publishedAt))
+      .limit(8);
 
-  return rows.map(toResourceCard);
+    return rows.map(toResourceCard);
+  } catch (e) {
+    console.error("blog: fetchResourcesForTerm degraded (DB unavailable)", e);
+    return [];
+  }
 }
 
 async function fetchResourcesForTopic(topicSlug: string): Promise<ResourceCard[]> {
   if (!process.env.DATABASE_URL) return [];
-  const rows = await db
-    .select({
-      id: resources.id,
-      title: resources.title,
-      externalUrl: resources.externalUrl,
-      summary: resources.summary,
-      authors: resources.authors,
-      publishedAt: resources.publishedAt,
-    })
-    .from(resources)
-    .innerJoin(resourceTags, eq(resourceTags.resourceId, resources.id))
-    .innerJoin(tags, eq(tags.id, resourceTags.tagId))
-    .where(
-      and(
-        eq(resources.isPublished, true),
-        eq(tags.category, "topic"),
-        eq(tags.name, topicSlug),
-      ),
-    )
-    .orderBy(desc(resources.publishedAt))
-    .limit(20);
+  try {
+    const rows = await db
+      .select({
+        id: resources.id,
+        title: resources.title,
+        externalUrl: resources.externalUrl,
+        summary: resources.summary,
+        authors: resources.authors,
+        publishedAt: resources.publishedAt,
+      })
+      .from(resources)
+      .innerJoin(resourceTags, eq(resourceTags.resourceId, resources.id))
+      .innerJoin(tags, eq(tags.id, resourceTags.tagId))
+      .where(
+        and(
+          eq(resources.isPublished, true),
+          eq(tags.category, "topic"),
+          eq(tags.name, topicSlug),
+        ),
+      )
+      .orderBy(desc(resources.publishedAt))
+      .limit(20);
 
-  return rows.map(toResourceCard);
+    return rows.map(toResourceCard);
+  } catch (e) {
+    console.error("blog: fetchResourcesForTopic degraded (DB unavailable)", e);
+    return [];
+  }
 }
 
 function toResourceCard(r: {
