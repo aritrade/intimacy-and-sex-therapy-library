@@ -21,15 +21,27 @@ function getClient() {
   if (global.__pg) return global.__pg;
   const url =
     process.env.DATABASE_URL ?? "postgresql://localhost:5432/__not_configured__";
-  const client = postgres(url, { max: 8, prepare: false });
-  if (process.env.NODE_ENV !== "production") global.__pg = client;
+  // Serverless (Vercel) runs one request per instance, so a single connection
+  // per warm instance is plenty; opening more just burns Neon's slot budget.
+  // Idle connections are recycled quickly so reclaimed instances release them.
+  const isServerless = !!process.env.VERCEL;
+  const client = postgres(url, {
+    max: isServerless ? 1 : 5,
+    idle_timeout: 20,
+    connect_timeout: 10,
+    prepare: false,
+  });
+  // Cache on global in ALL environments. Without this, the proxy below
+  // rebuilt a fresh pool on every `db.*` access in production, leaking
+  // connections until Postgres ran out of slots.
+  global.__pg = client;
   return client;
 }
 
 function getDb() {
   if (global.__db) return global.__db;
   const d = drizzle(getClient(), { schema });
-  if (process.env.NODE_ENV !== "production") global.__db = d;
+  global.__db = d;
   return d;
 }
 
