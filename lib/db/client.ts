@@ -21,12 +21,16 @@ function getClient() {
   if (global.__pg) return global.__pg;
   const url =
     process.env.DATABASE_URL ?? "postgresql://localhost:5432/__not_configured__";
-  // Serverless (Vercel) runs one request per instance, so a single connection
-  // per warm instance is plenty; opening more just burns Neon's slot budget.
-  // Idle connections are recycled quickly so reclaimed instances release them.
+  // Pool size: pages fan out several queries via Promise.all (e.g. /catalog
+  // runs ~5 concurrently) and Vercel instances can serve concurrent requests,
+  // so the pool must be >1 or those all serialize on one connection (max:1
+  // turned /catalog into a 16s+ serial crawl). 10 lets a request's parallel
+  // queries run concurrently with headroom; idle_timeout reclaims them so a
+  // warm instance never sits on connections, keeping us well under Neon's
+  // slot budget. The real leak fix is caching the client on `global` below.
   const isServerless = !!process.env.VERCEL;
   const client = postgres(url, {
-    max: isServerless ? 1 : 5,
+    max: isServerless ? 10 : 5,
     idle_timeout: 20,
     connect_timeout: 10,
     prepare: false,
