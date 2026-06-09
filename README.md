@@ -436,9 +436,9 @@ ops, failure-mode triage table).
 
 **All Rights Reserved.**
 
-Copyright (c) 2026 the author. This repository and its contents are
+Copyright (c) 2026 Aritra De. This repository and its contents are
 proprietary. No license — express or implied — is granted to use, copy,
 modify, merge, publish, distribute, sublicense, or sell any part of this
 codebase, its content, brand assets, or generated media. Viewing the
 source for evaluation purposes does not grant any other rights. For any
-use beyond that, you must obtain prior written permission from the author.
+use beyond that, you must obtain prior written permission from Aritra De.
