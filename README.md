@@ -1,13 +1,25 @@
 # Intimacy & Sex Therapy Library
 
-An evidence-grounded, clinician-reviewed learning platform on sex therapy —
-plus an autonomous short-form video engine that generates, renders, and
-publishes Reels / Shorts to Instagram, YouTube, and Facebook with a
-human-in-the-loop approval gate.
+**Evidence-based intimacy education that treats clinical rigor and user privacy as features, not afterthoughts.**
 
-> **Educational. Not medical advice. Not a licensed therapist.** This site
-> discusses sexuality and intimate relationships in clinical detail and is
-> for adults (18+).
+A clinician-reviewed learning platform for sex therapy and relationship
+health — grounded *only* in vetted clinical sources (AASECT, WPATH, WHO,
+NIH/PMC, peer-reviewed journals, accredited universities) — paired with a
+fully autonomous short-form video engine that writes, renders, and publishes
+Reels / Shorts to Instagram, YouTube, and Facebook behind a human-in-the-loop
+approval gate.
+
+Under the hood: hybrid BM25 + pgvector retrieval powering a cite-everything
+chatbot; *Sahay*, an AI companion with selectable confidentiality modes in
+English, Hindi, and Hinglish; validated self-assessments (PHQ-9, GAD-7,
+NSSS-S); and a privacy posture where **no prompt, reply, vault transcript, or
+PII is ever logged** — with DPDP 2023 + GDPR right-to-erasure built in from
+the schema up. The whole generate → render → publish loop runs Mac-free on
+GitHub Actions + Vercel.
+
+> **Educational, not medical advice — and not a licensed therapist.** The
+> platform discusses sexuality and intimate relationships in clinical detail
+> and is intended for adults (18+).
 
 ![status](https://img.shields.io/badge/status-live-success)
 ![content](https://img.shields.io/badge/content-clinician%20reviewed-green)
