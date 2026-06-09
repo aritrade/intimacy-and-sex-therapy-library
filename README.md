@@ -9,6 +9,15 @@ human-in-the-loop approval gate.
 > discusses sexuality and intimate relationships in clinical detail and is
 > for adults (18+).
 
+![status](https://img.shields.io/badge/status-live-success)
+![content](https://img.shields.io/badge/content-clinician%20reviewed-green)
+![framework](https://img.shields.io/badge/Next.js-15-black)
+![lang](https://img.shields.io/badge/TypeScript-strict-3178c6)
+![db](https://img.shields.io/badge/Postgres-pgvector-336791)
+![ai](https://img.shields.io/badge/AI-Claude%20%2B%20Llama--3-d97757)
+![pipeline](https://img.shields.io/badge/publishing-human%20in%20the%20loop-blue)
+![license](https://img.shields.io/badge/license-All%20Rights%20Reserved-red)
+
 ---
 
 ## Watch the primer
@@ -420,3 +429,16 @@ ops, failure-mode triage table).
   fails or `CRON_SECRET` drifts. Admin Basic-auth fallback made consistent
   across middleware, page guards, `requireApiAdmin`, and `requireRole`
   (documented in `ADR-0001-admin-auth.md`, with regression tests).
+
+---
+
+## License
+
+**All Rights Reserved.**
+
+Copyright (c) 2026 the author. This repository and its contents are
+proprietary. No license — express or implied — is granted to use, copy,
+modify, merge, publish, distribute, sublicense, or sell any part of this
+codebase, its content, brand assets, or generated media. Viewing the
+source for evaluation purposes does not grant any other rights. For any
+use beyond that, you must obtain prior written permission from the author.
