@@ -29,12 +29,9 @@
 name: render-due
 
 on:
-  # Hourly cron PAUSED to stop re-pulling render assets (voiceover/portrait/
-  # avatar) out of Vercel Blob while we recover from the Blob Data Transfer
-  # overage. Re-enable by uncommenting the schedule below once usage resets.
-  # schedule:
-  #   # Every hour, at :23 (offset from publish-due at :07).
-  #   - cron: "23 * * * *"
+  schedule:
+    # Every hour, at :23 (offset from publish-due at :07).
+    - cron: "23 * * * *"
   workflow_dispatch:
     inputs:
       draft_id:
