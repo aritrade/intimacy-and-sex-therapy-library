@@ -206,7 +206,7 @@ export default async function DraftReview({ params }: { params: { id: string } }
           </div>
           <video
             controls
-            preload="auto"
+            preload="metadata"
             playsInline
             src={draft.videoUrl}
             className="mt-3 w-full max-w-md rounded-xl border border-border bg-bg"

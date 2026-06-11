@@ -201,7 +201,7 @@ export function QueueActionCard({ lane, draft }: { lane: string; draft: Draft })
           <video
             src={draft.videoUrl}
             controls
-            preload="auto"
+            preload="metadata"
             playsInline
             className="w-full rounded-lg border border-border bg-bg"
             style={{ maxHeight: 360 }}
