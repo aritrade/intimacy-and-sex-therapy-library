@@ -85,6 +85,387 @@ export type AvatarInput = {
   audioDurationSeconds: number;
 };
 
+/**
+ * Long-form-safe entry point that wraps {@link generateAvatarVideo}.
+ *
+ * SadTalker (and Hallo, AniPortrait, Wav2Lip — every talking-head model
+ * on Replicate we've evaluated) degrades visibly past ~45 seconds of
+ * input audio: the persona's head starts to drift off-frame, blink
+ * cadence goes robotic, and the mouth eventually desyncs by 1-2 phonemes
+ * near the end. Splitting the audio into ~30-second chunks and stitching
+ * the per-chunk MP4s together keeps every chunk inside the model's
+ * comfort zone.
+ *
+ * When the audio is shorter than the threshold, this is a no-op — it
+ * calls generateAvatarVideo directly. When it's longer AND we have the
+ * local audio file to slice from, it:
+ *   1. Splits the voiceover into N chunks of ≤ AVATAR_MAX_CHUNK_SECONDS
+ *      each (default 30s), bounded by AVATAR_MAX_CHUNKS (default 12).
+ *   2. Uploads each chunk to Blob so the provider can fetch it.
+ *   3. Runs generateAvatarVideo in parallel per chunk, using a unique
+ *      per-chunk draftId (`<draftId>-c<i>`) so the GitHub Actions
+ *      concurrency group is one-per-chunk (chunks run in parallel; total
+ *      wall time ≈ single-chunk time, not N × single-chunk time).
+ *   4. Concatenates the per-chunk MP4s with ffmpeg's concat demuxer
+ *      (video stream-copy — SadTalker outputs deterministic H.264
+ *      params, so no re-encode is needed).
+ *   5. Re-uploads the stitched MP4 to Blob at the canonical
+ *      `renders/<draftId>/avatar.mp4` path so callers see one URL.
+ *
+ * B-roll seam masking is handled at the composition layer, not here:
+ * AvatarReel places a stock B-roll cutaway over each script scene when
+ * one is available, and scene boundaries land close to (though not
+ * exactly on) chunk seams. The remaining visible artefact at each seam
+ * is a fresh mouth-close pose from SadTalker — briefly noticeable if
+ * you're looking for it, invisible in normal viewing.
+ *
+ * On any per-chunk failure this raises AvatarRefusal, and the caller in
+ * lib/social/render.ts catches it → the still-portrait fallback picks
+ * up. We deliberately don't try to salvage a partial (N-1 chunks) MP4:
+ * a video with a missing 30s section is worse than the fallback.
+ */
+export async function generateAvatarVideoChunked(
+  input: AvatarInput & {
+    /** Local path to the voiceover MP3, needed for ffmpeg slicing. */
+    voiceoverLocalPath?: string;
+  },
+): Promise<AvatarResult> {
+  const threshold = Number(
+    process.env.AVATAR_CHUNK_THRESHOLD_SECONDS ?? "45",
+  );
+  const maxChunkSec = Number(
+    process.env.AVATAR_MAX_CHUNK_SECONDS ?? "30",
+  );
+  const maxChunks = Number(process.env.AVATAR_MAX_CHUNKS ?? "12");
+
+  if (input.audioDurationSeconds <= threshold) {
+    return generateAvatarVideo(input);
+  }
+
+  if (
+    !input.voiceoverLocalPath ||
+    !existsSync(input.voiceoverLocalPath)
+  ) {
+    // We can't slice without a local audio file. Fall back to single-shot
+    // so the pipeline still produces something (which will look worse
+    // past ~45s, but is better than no video).
+    console.warn(
+      `[avatar] long-form ${input.audioDurationSeconds.toFixed(1)}s audio but no local voiceover path; ` +
+        `falling back to single-shot generation (quality will degrade past ~45s).`,
+    );
+    return generateAvatarVideo(input);
+  }
+
+  const boundaries = computeChunkBoundaries(
+    input.audioDurationSeconds,
+    maxChunkSec,
+  );
+  if (boundaries.length > maxChunks) {
+    throw new AvatarRefusal(
+      "cap_exceeded",
+      `Voiceover is ${input.audioDurationSeconds.toFixed(1)}s which would need ` +
+        `${boundaries.length} chunks (> AVATAR_MAX_CHUNKS=${maxChunks}). ` +
+        `Raise the cap or shorten the essay.`,
+    );
+  }
+
+  console.log(
+    `[avatar] chunking ${input.audioDurationSeconds.toFixed(1)}s audio into ${boundaries.length} chunks ` +
+      `(max ${maxChunkSec}s each); boundaries=[${boundaries.map((b) => b.toFixed(1)).join(", ")}]`,
+  );
+
+  // 1. Slice the audio locally.
+  const workDir = join(
+    process.cwd(),
+    "public",
+    "renders",
+    input.draftId,
+    "avatar-chunks",
+  );
+  await mkdir(workDir, { recursive: true });
+  const chunkAudios = await sliceAudioIntoChunks(
+    input.voiceoverLocalPath,
+    boundaries,
+    input.audioDurationSeconds,
+    workDir,
+  );
+
+  // 2. Upload each chunk so the provider can fetch it via HTTPS.
+  const chunkUrls = await Promise.all(
+    chunkAudios.map(async (p, i) => {
+      const hosted = await uploadRenderArtifact(
+        p,
+        input.draftId,
+        `voiceover-chunk-${i}.mp3`,
+      );
+      if (hosted.hosted === "local" || !hosted.url.startsWith("https://")) {
+        throw new AvatarRefusal(
+          "missing_audio_url",
+          `Voiceover chunk ${i} did not land on an HTTPS host (BLOB_READ_WRITE_TOKEN unset?). ` +
+            `Chunked avatar generation requires public URLs so the provider can fetch each slice.`,
+        );
+      }
+      return { url: hosted.url, pathname: hosted.pathname };
+    }),
+  );
+
+  // 3. Per-chunk generation in parallel. Each chunk gets its own draftId
+  //    suffix so GH Actions' `avatar-<draftId>` concurrency group doesn't
+  //    serialise them — otherwise a 4-min essay would take N × single-chunk
+  //    time instead of ~single-chunk time.
+  let chunkResults: AvatarResult[];
+  try {
+    chunkResults = await Promise.all(
+      boundaries.map((_, i) => {
+        const chunkStart = i === 0 ? 0 : boundaries[i - 1];
+        const chunkEnd = boundaries[i];
+        return generateAvatarVideo({
+          voiceoverUrl: chunkUrls[i].url,
+          draftId: `${input.draftId}-c${i}`,
+          audioDurationSeconds: chunkEnd - chunkStart,
+          provider: input.provider,
+          model: input.model,
+        });
+      }),
+    );
+  } finally {
+    // Reclaim the per-chunk voiceover uploads. Best-effort — if the
+    // avatar generation failed we still want to clean up so the next
+    // retry doesn't stack duplicate blobs. Failed deletes are logged
+    // but don't rethrow.
+    await Promise.allSettled(
+      chunkUrls.map(async (u) => {
+        try {
+          const { deleteRenderArtifact } = await import("./blob-host");
+          await deleteRenderArtifact(u.pathname);
+        } catch (e) {
+          console.warn(
+            `[avatar] chunk voiceover cleanup failed (non-fatal): ${(e as Error).message}`,
+          );
+        }
+      }),
+    );
+  }
+
+  // 4. Concatenate per-chunk MP4s with ffmpeg. SadTalker's output has
+  //    stable H.264 parameters so -c copy works; we re-encode as a
+  //    fallback if the demuxer rejects a mismatch.
+  const stitchedLocalPath = join(
+    process.cwd(),
+    "public",
+    "renders",
+    input.draftId,
+    "avatar.mp4",
+  );
+  await concatMp4sViaFfmpeg(
+    chunkResults.map((r) => r.localPath),
+    stitchedLocalPath,
+  );
+
+  // 5. Upload the stitched MP4 to the canonical path so callers can
+  //    reference it via a single URL.
+  const hosted = await uploadRenderArtifact(
+    stitchedLocalPath,
+    input.draftId,
+    "avatar.mp4",
+  );
+
+  const totalUsd = chunkResults.reduce((sum, r) => sum + r.estimatedUsd, 0);
+  const providerLabel = chunkResults[0]?.provider ?? "github-actions";
+  const modelLabel = chunkResults[0]?.modelUsed ?? "unknown";
+
+  console.log(
+    `[avatar] stitched ${chunkResults.length} chunks -> ${hosted.url} ` +
+      `(~$${totalUsd.toFixed(3)} across all chunks)`,
+  );
+
+  return {
+    publicUrl: hosted.url,
+    localPath: stitchedLocalPath,
+    estimatedUsd: totalUsd,
+    modelUsed: `${modelLabel} (${chunkResults.length}-chunk stitch)`,
+    provider: providerLabel,
+  };
+}
+
+/**
+ * Split a total duration into N chunks each ≤ maxChunkSec seconds long,
+ * returning the CUMULATIVE offsets of each chunk's end point (so the
+ * boundaries `[b0, b1, ..., bN]` describe chunks `[0..b0], [b0..b1],
+ * ..., [b_{N-1}..total]`).
+ *
+ * Pure and unit-testable. Kept as an exported helper for the same
+ * reason: the +1 / boundary-arithmetic here is where the whole thing
+ * tends to break.
+ */
+export function computeChunkBoundaries(
+  totalSeconds: number,
+  maxChunkSec: number,
+): number[] {
+  if (totalSeconds <= 0) return [];
+  if (maxChunkSec <= 0) {
+    throw new Error("maxChunkSec must be positive");
+  }
+  // How many chunks so that each is ≤ maxChunkSec and they're as even as
+  // possible? Ceil to guarantee ≤max; even sizing keeps the last chunk
+  // from being awkwardly tiny (a 2s trailing chunk would produce a
+  // visibly short avatar clip).
+  const n = Math.max(1, Math.ceil(totalSeconds / maxChunkSec));
+  const perChunk = totalSeconds / n;
+  const boundaries: number[] = [];
+  for (let i = 1; i <= n; i++) {
+    // Last boundary must equal totalSeconds exactly — floating-point
+    // arithmetic can otherwise leave a sub-ms gap that ffmpeg treats
+    // as a truncation.
+    boundaries.push(i === n ? totalSeconds : perChunk * i);
+  }
+  return boundaries;
+}
+
+/**
+ * Slice a local MP3 into N chunks aligned to the given boundaries.
+ * Returns the local paths of the slices in order. Uses ffmpeg's `-ss`
+ * / `-to` with `-c copy` so slicing is byte-fast; MP3 frame alignment
+ * is close-enough (within a few ms) for our purposes.
+ */
+async function sliceAudioIntoChunks(
+  localAudioPath: string,
+  boundaries: number[],
+  totalSeconds: number,
+  workDir: string,
+): Promise<string[]> {
+  // Lazy-import so this module can still be required in edge contexts
+  // that never touch ffmpeg (e.g. type-only imports for the AvatarInput
+  // type from the API route).
+  const [{ spawn }, ffmpegStatic] = await Promise.all([
+    import("node:child_process"),
+    import("ffmpeg-static"),
+  ]);
+  const ffmpegBin = ffmpegStatic.default;
+  if (!ffmpegBin) {
+    throw new AvatarRefusal(
+      "download_failed",
+      "ffmpeg-static is unavailable — required for long-form avatar chunking.",
+    );
+  }
+
+  const outPaths: string[] = [];
+  for (let i = 0; i < boundaries.length; i++) {
+    const start = i === 0 ? 0 : boundaries[i - 1];
+    const end = boundaries[i];
+    const outPath = join(workDir, `chunk-${String(i).padStart(2, "0")}.mp3`);
+    void totalSeconds; // reserved for future audio-duration probing
+    await new Promise<void>((resolve, reject) => {
+      const p = spawn(
+        ffmpegBin as string,
+        [
+          "-y",
+          "-i", localAudioPath,
+          "-ss", start.toFixed(3),
+          "-to", end.toFixed(3),
+          "-c", "copy",
+          outPath,
+        ],
+        { stdio: ["ignore", "ignore", "pipe"] },
+      );
+      let stderr = "";
+      p.stderr.on("data", (d) => (stderr += d.toString()));
+      p.on("error", reject);
+      p.on("close", (code) => {
+        if (code === 0) resolve();
+        else
+          reject(
+            new AvatarRefusal(
+              "download_failed",
+              `ffmpeg slice chunk ${i} failed (exit ${code}): ${stderr.slice(-800)}`,
+            ),
+          );
+      });
+    });
+    outPaths.push(outPath);
+  }
+  return outPaths;
+}
+
+/**
+ * Concatenate per-chunk MP4s into a single MP4 at outPath. Uses ffmpeg's
+ * concat demuxer with `-c copy` — SadTalker produces H.264 with
+ * deterministic frame rate and resolution across runs, so no re-encode
+ * is required. Falls back to a full re-encode if the copy pass errors
+ * (e.g. if we ever change models mid-render).
+ */
+async function concatMp4sViaFfmpeg(
+  chunkPaths: string[],
+  outPath: string,
+): Promise<void> {
+  const [{ spawn }, ffmpegStatic] = await Promise.all([
+    import("node:child_process"),
+    import("ffmpeg-static"),
+  ]);
+  const ffmpegBin = ffmpegStatic.default;
+  if (!ffmpegBin) {
+    throw new AvatarRefusal(
+      "download_failed",
+      "ffmpeg-static is unavailable — required for long-form avatar chunking.",
+    );
+  }
+
+  // Write the concat list file. Paths must be POSIX-escaped for the
+  // demuxer (no special escaping for us because our paths never contain
+  // quotes, but keep the pattern for safety).
+  const listPath = `${outPath}.concat-list.txt`;
+  const lines = chunkPaths
+    .map((p) => `file '${p.replace(/'/g, "'\\''")}'`)
+    .join("\n");
+  await writeFile(listPath, `${lines}\n`, "utf-8");
+
+  const runFfmpeg = (args: string[]): Promise<{ code: number; stderr: string }> =>
+    new Promise((resolve, reject) => {
+      const p = spawn(ffmpegBin as string, args, {
+        stdio: ["ignore", "ignore", "pipe"],
+      });
+      let stderr = "";
+      p.stderr.on("data", (d) => (stderr += d.toString()));
+      p.on("error", reject);
+      p.on("close", (code) => resolve({ code: code ?? -1, stderr }));
+    });
+
+  const copyResult = await runFfmpeg([
+    "-y",
+    "-f", "concat",
+    "-safe", "0",
+    "-i", listPath,
+    "-c", "copy",
+    outPath,
+  ]);
+  if (copyResult.code === 0) return;
+
+  console.warn(
+    `[avatar] concat -c copy failed (exit ${copyResult.code}); ` +
+      `retrying with re-encode. stderr=${copyResult.stderr.slice(-400)}`,
+  );
+
+  const reencodeResult = await runFfmpeg([
+    "-y",
+    "-f", "concat",
+    "-safe", "0",
+    "-i", listPath,
+    "-c:v", "libx264",
+    "-preset", "veryfast",
+    "-crf", "20",
+    "-pix_fmt", "yuv420p",
+    "-r", "25",
+    "-an",
+    outPath,
+  ]);
+  if (reencodeResult.code !== 0) {
+    throw new AvatarRefusal(
+      "download_failed",
+      `ffmpeg concat re-encode failed (exit ${reencodeResult.code}): ${reencodeResult.stderr.slice(-800)}`,
+    );
+  }
+}
+
 export type AvatarResult = {
   publicUrl: string;
   localPath: string;

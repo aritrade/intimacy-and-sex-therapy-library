@@ -738,6 +738,26 @@ composition so a video is still produced. Today's running total lives
 in `.replicate-usage.json` at the repo root (gitignored). The
 `github-actions` path is free so the cap doesn't apply.
 
+**Long-form chunking (>45s essays):** SadTalker (and every talking-head
+model on Replicate we've evaluated) degrades visibly past ~45s of
+input audio — the head drifts, blinks turn robotic, and the mouth
+desyncs by 1-2 phonemes near the end. `lib/social/avatar.ts` auto-splits
+voiceovers longer than `AVATAR_CHUNK_THRESHOLD_SECONDS` (default 45s)
+into `AVATAR_MAX_CHUNK_SECONDS` (default 30s) segments, generates the
+lip-sync per chunk **in parallel** (each chunk gets its own
+`workflow_dispatch` with a unique per-chunk `draftId`, so GH's
+`avatar-<id>` concurrency group doesn't serialise them), then
+ffmpeg-concats the per-chunk MP4s into a single stitched avatar. Seams
+land close to script scene boundaries where AvatarReel places B-roll
+cutaways, hiding the visible pop. A 4-minute essay = 8 chunks; wall
+time is ≈ single-chunk time (~7 min on GH Actions, ~30 s on Replicate),
+not 8 × single-chunk time.
+
+The chunker is capped at `AVATAR_MAX_CHUNKS` (default 12 = 6 minutes at
+30 s each) to prevent runaway costs. Raise the cap for longer essays,
+but also raise `AVATAR_RENDER_MAX_WAIT_SECONDS` (default 1500 s) or a
+cold-boot GH Actions run will time out before all chunks finish.
+
 **Re-renders:** to re-render an existing draft with the new pipeline:
 
 ```bash
@@ -767,6 +787,8 @@ statuses, so re-rendering doesn't silently undo your approvals.
 | Render log shows `avatar refused (polling_timeout)`  | GH Actions run took >25 min (cold checkpoint download + slow runner) | Open the run URL printed in the log. Re-trigger if it eventually succeeded; bump `AVATAR_RENDER_MAX_WAIT_SECONDS` if cold runs consistently exceed 25 min. |
 | Render log shows `avatar refused (prediction_failed)` | Workflow run finished with conclusion=failure (or Replicate model errored) | Open the run URL in the error; check the "Run SadTalker inference" step logs. Common: GH cache miss + slow torch install. Re-trigger. |
 | Render log shows `avatar refused (artifact_not_found)` | Workflow succeeded but didn't upload the `avatar-<id>` artifact | Inspect the run's "Upload avatar artifact" step. The MP4 may have rendered but failed `if-no-files-found: error` because SadTalker produced zero output. |
+| Render log shows `avatar refused (cap_exceeded: … would need N chunks …)` | Long-form essay exceeds `AVATAR_MAX_CHUNKS` (default 12 × 30 s = 6 min) | Either raise `AVATAR_MAX_CHUNKS` (and `AVATAR_RENDER_MAX_WAIT_SECONDS` accordingly), or shorten the essay. Renders fall back to the still-portrait AvatarReel until fixed. |
+| Chunked avatar renders 90% then times out on the last chunk | GH Actions cold-boot on one chunk exceeded `AVATAR_RENDER_MAX_WAIT_SECONDS` (25 min) | Re-render the draft — SadTalker checkpoints and pip wheels are now cached, so the retry should be warm. If cold runs consistently exceed 25 min, bump `AVATAR_RENDER_MAX_WAIT_SECONDS` to 1800 (30 min). |
 | Public pages 500 with `Digest: <n>`; `/api/health` shows `db.ok=false` with `remaining connection slots are reserved for roles with the SUPERUSER attribute` | Neon connection-slot exhaustion (Postgres error `53300`) | See **"Database connection exhaustion"** below. Drain idle backends for instant relief; ensure the connection-pool fix is deployed; switch `DATABASE_URL` to the Neon `-pooler` endpoint. |
 | Vercel deploy fails at build with `Export encountered errors on .../blog/[slug]` + the same `53300` slot error | Build-time prerender of `force-static` blog pages queried a connection-starved DB | Drain idle backends (below) to free slots, then redeploy. The blog fetchers now degrade to an empty reading list on DB error, so this shouldn't recur — but a fully-saturated DB can still slow the build. |
 
