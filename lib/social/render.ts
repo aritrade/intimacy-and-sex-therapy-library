@@ -26,7 +26,7 @@ import { scriptToSrt } from "./stt-local";
 import { uploadRenderArtifact } from "./blob-host";
 import { pickClipsForScript } from "./stock-clips";
 import { pickPhotosForScript, type StockPhoto } from "./stock-photos";
-import { generateAvatarVideo, AvatarRefusal } from "./avatar";
+import { generateAvatarVideoChunked, AvatarRefusal } from "./avatar";
 import { NARRATOR } from "../brand/persona";
 import { buildSpeechPlan, speechPlanToPlainText } from "./speech-plan";
 import type { GeneratedScript } from "./script-generator";
@@ -206,8 +206,16 @@ export async function renderDraft(input: RenderInput): Promise<RenderResult> {
       );
     } else {
       try {
-        const av = await generateAvatarVideo({
+        // Use the chunked entry point so long-form essays (>45s) get
+        // split into ≤30s segments and stitched back together — SadTalker
+        // (and every talking-head model on Replicate) degrades visibly
+        // past ~45s, so single-shot generation of a 4-min essay produces
+        // a drifting/desyncing avatar. The chunked wrapper is a no-op for
+        // audio ≤ AVATAR_CHUNK_THRESHOLD_SECONDS (default 45s), so this
+        // is safe to use unconditionally.
+        const av = await generateAvatarVideoChunked({
           voiceoverUrl: renderVoiceoverUrl,
+          voiceoverLocalPath: voiceoverPath ?? undefined,
           draftId,
           audioDurationSeconds: totalSeconds,
         });
