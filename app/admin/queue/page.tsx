@@ -21,6 +21,8 @@ import { db } from "@/lib/db/client";
 import { contentDrafts } from "@/lib/db/schema";
 import { requireAdminPage } from "@/lib/auth/admin-page-guard";
 import { QueueActionCard } from "@/components/admin/QueueActionCard";
+import { QueueBulkApprove } from "@/components/admin/QueueBulkApprove";
+import { postsPerDay } from "@/lib/social/schedule";
 
 export const metadata = { title: "Queue · Admin" };
 export const dynamic = "force-dynamic";
@@ -96,6 +98,13 @@ export default async function QueuePage() {
           See all drafts →
         </Link>
       </header>
+
+      <div className="mb-4">
+        <QueueBulkApprove
+          ids={[...byLane.clinician, ...byLane.editor].map((d) => d.id)}
+          postsPerDay={postsPerDay()}
+        />
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {(Object.keys(LANES) as LaneKey[]).map((lane) => (

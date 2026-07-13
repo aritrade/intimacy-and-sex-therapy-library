@@ -6,6 +6,7 @@ import { contentDrafts } from "@/lib/db/schema";
 import { recordAudit } from "@/lib/observability/audit";
 import { getActor } from "@/lib/admin/actor";
 import { requireApiAdmin } from "@/lib/auth/api-admin-guard";
+import { reserveNextSlot } from "@/lib/social/schedule";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -56,6 +57,13 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     }
     update.status = "editor_reviewed";
     if (reviewerId) update.editorReviewerId = reviewerId;
+    // Auto-schedule on editor sign-off: stamp the next throttled peak slot so
+    // the hourly publish-due cron rolls it out without a manual "Publish now".
+    // Never overwrites an existing schedule; no-op when disabled via env.
+    if (!existing.scheduledAt) {
+      const slot = await reserveNextSlot();
+      if (slot) update.scheduledAt = slot;
+    }
   }
 
   const updated = await db
@@ -67,7 +75,12 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   void recordAudit({
     actor: await getActor(req),
     action: `draft_approve_${role}`,
-    meta: { draftId: params.id, fromStatus: existing.status, toStatus: update.status },
+    meta: {
+      draftId: params.id,
+      fromStatus: existing.status,
+      toStatus: update.status,
+      scheduledAt: update.scheduledAt?.toISOString(),
+    },
   });
 
   return NextResponse.json({ draft: updated[0] });

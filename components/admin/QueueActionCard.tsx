@@ -68,7 +68,7 @@ export function QueueActionCard({ lane, draft }: { lane: string; draft: Draft })
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            platforms: ["instagram", "youtube", "facebook", "linkedin", "twitter"],
+            platforms: ["instagram", "youtube", "facebook"],
             iAmTheReviewerAndIWantToPublish: true,
           }),
         });

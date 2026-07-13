@@ -20,7 +20,7 @@ import { NextResponse } from "next/server";
 import { and, eq, lte, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { contentDrafts } from "@/lib/db/schema";
-import { publishDraft } from "@/lib/social/publish";
+import { publishDraft, autoPublishPlatforms } from "@/lib/social/publish";
 import { recordAudit } from "@/lib/observability/audit";
 import { log } from "@/lib/observability/logger";
 
@@ -83,13 +83,7 @@ async function handle(req: Request): Promise<NextResponse> {
       summary.results.push({ draftId: draft.id, ok: false, platforms: [], failureCount: 1 });
       continue;
     }
-    const platforms: ("instagram" | "youtube" | "facebook" | "linkedin" | "twitter")[] = [
-      "instagram",
-      "youtube",
-      "facebook",
-      "linkedin",
-      "twitter",
-    ];
+    const platforms = autoPublishPlatforms();
     const r = await publishDraft({ draftId: draft.id, platforms });
     if (r.ok) summary.published += 1;
     else summary.failed += 1;

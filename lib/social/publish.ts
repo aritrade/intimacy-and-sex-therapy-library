@@ -57,6 +57,25 @@ export type Platform =
   | "linkedin"
   | "twitter";
 
+/**
+ * Platforms the automated rollout (publish-due cron + auto-schedule) targets.
+ * Intentionally IG/YT/FB only — LinkedIn/Twitter remain available for manual
+ * publishes but are excluded from the hands-off pipeline. Override with a
+ * comma-separated `AUTO_PUBLISH_PLATFORMS` env if that ever needs to change.
+ */
+export function autoPublishPlatforms(): Platform[] {
+  const allowed: Platform[] = ["instagram", "youtube", "facebook", "linkedin", "twitter"];
+  const raw = process.env.AUTO_PUBLISH_PLATFORMS;
+  if (raw) {
+    const parsed = raw
+      .split(",")
+      .map((s) => s.trim().toLowerCase())
+      .filter((s): s is Platform => (allowed as string[]).includes(s));
+    if (parsed.length > 0) return [...new Set(parsed)];
+  }
+  return ["instagram", "youtube", "facebook"];
+}
+
 export type PublishInput = {
   draftId: string;
   platforms: Platform[];
