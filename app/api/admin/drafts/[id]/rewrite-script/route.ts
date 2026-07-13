@@ -236,6 +236,10 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       captionsSrt: null,
       clinicianReviewerId: null,
       editorReviewerId: null,
+      // Fresh script → fresh render budget: clear any prior backoff so the
+      // rewritten draft re-enters the auto-render pool immediately.
+      renderAttempts: 0,
+      lastRenderAttemptAt: null,
       grounding: {
         chunkIds: grounding.chunks.map((c) => c.chunkId),
         sources: grounding.sources.map((s) => ({ title: s.title, url: s.url, year: s.year })),

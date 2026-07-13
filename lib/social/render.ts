@@ -23,7 +23,12 @@ import { renderMedia, selectComposition } from "@remotion/renderer";
 import { synthesizeSegmented, type TTSResult } from "./tts";
 import { transcribe, wordsToSrt, drift } from "./stt";
 import { scriptToSrt } from "./stt-local";
-import { uploadRenderArtifact } from "./blob-host";
+import {
+  uploadRenderArtifact,
+  uploadSharedAsset,
+  deleteRenderArtifact,
+  type BlobHost,
+} from "./blob-host";
 import { pickClipsForScript } from "./stock-clips";
 import { pickPhotosForScript, type StockPhoto } from "./stock-photos";
 import { generateAvatarVideoChunked, AvatarRefusal } from "./avatar";
@@ -59,7 +64,7 @@ export type RenderResult = {
   captionsSrt: string | null;
   drift: number | null;
   totalSeconds: number;
-  blobHost: "vercel-blob" | "local";
+  blobHost: BlobHost;
 };
 
 const FPS = 30;
@@ -138,13 +143,18 @@ export async function renderDraft(input: RenderInput): Promise<RenderResult> {
   //     video (renderVoiceoverUrl = null). The comp falls back to no
   //     <Audio>, which is the correct dev-mode behaviour.
   let renderVoiceoverUrl: string | null = null;
+  // Pathname of the voiceover blob, captured so we can delete it once the
+  // MP4 (which has the audio baked in) is hosted — see the cleanup at the
+  // end. The voiceover is only needed transiently, during this render.
+  let voiceoverBlobPathname: string | null = null;
   if (voiceoverPath) {
     try {
       const ext = voiceoverPath.endsWith(".mp3") ? "mp3" : "wav";
       const r = await uploadRenderArtifact(voiceoverPath, draftId, `voiceover.${ext}`);
-      if (r.hosted === "vercel-blob" && r.url.startsWith("https://")) {
+      if (r.hosted !== "local" && r.url.startsWith("https://")) {
         renderVoiceoverUrl = r.url;
         publicVoiceoverUrl = r.url;
+        voiceoverBlobPathname = r.pathname;
       } else {
         console.warn(
           "[render] voiceover not on HTTPS host (BLOB_READ_WRITE_TOKEN unset?); rendering silent video",
@@ -163,20 +173,21 @@ export async function renderDraft(input: RenderInput): Promise<RenderResult> {
   //      Next-style /public paths during render). For AvatarReel it's
   //      also what gets passed to Replicate as source_image when the
   //      lip-sync path is available. PhotoReel uses it as the small
-  //      circular host badge at hook + CTA. Cheap idempotent upload —
-  //      one ~500KB PNG per draft.
+  //      circular host badge at hook + CTA.
+  //
+  //      The portrait is IDENTICAL across drafts, so we host it once at a
+  //      content-addressed `assets/` path (uploadSharedAsset) and reuse
+  //      that single object on every render — instead of copying the same
+  //      ~500KB PNG into each `renders/<draftId>/` folder, which scaled
+  //      storage (and re-uploads) linearly with the draft count.
   let portraitUrl: string | null = null;
   if (
     (style === "avatar" || style === "photo") &&
     existsSync(NARRATOR.portraitPath)
   ) {
     try {
-      const r = await uploadRenderArtifact(
-        NARRATOR.portraitPath,
-        draftId,
-        "narrator.png",
-      );
-      if (r.hosted === "vercel-blob" && r.url.startsWith("https://")) {
+      const r = await uploadSharedAsset(NARRATOR.portraitPath, "narrator.png");
+      if (r.hosted !== "local" && r.url.startsWith("https://")) {
         portraitUrl = r.url;
       } else {
         console.warn(
@@ -404,7 +415,7 @@ export async function renderDraft(input: RenderInput): Promise<RenderResult> {
   // gets the `/renders/...` path so `next dev` previews keep working.
   const videoHostedHttps =
     !!videoBlob &&
-    videoBlob.hosted === "vercel-blob" &&
+    videoBlob.hosted !== "local" &&
     videoBlob.url.startsWith("https://");
   const requirePublicHost = !!(
     process.env.CI ||
@@ -427,8 +438,28 @@ export async function renderDraft(input: RenderInput): Promise<RenderResult> {
     );
   }
 
+  // Reclaim the transient voiceover blob now that the MP4 is hosted: the
+  // audio is muxed into video.mp4, the DB `voiceover_url` column is never
+  // read back (publishers pull video.mp4, which carries the audio), and a
+  // re-render regenerates the voiceover from scratch. Leaving it in Blob
+  // just burned free-tier storage until the draft eventually hit
+  // `posted`/`taken_down` and the prune swept it. Best-effort: a failed
+  // delete must not fail the render.
+  let voiceoverReclaimed = false;
+  if (videoHostedHttps && voiceoverBlobPathname) {
+    try {
+      await deleteRenderArtifact(voiceoverBlobPathname);
+      voiceoverReclaimed = true;
+    } catch (e) {
+      console.warn(
+        "[render] voiceover blob cleanup failed (non-fatal):",
+        (e as Error).message,
+      );
+    }
+  }
+
   // Append a per-render cache-buster to the stored URLs. Vercel Blob
-  // serves with `Cache-Control: public, max-age=2592000` (30 days), and
+  // serves with a long max-age (see blob-host.ts cacheControlMaxAge), and
   // re-renders write back to the same path inside `renders/<draftId>/`,
   // so browsers (and the admin queue UI) would happily replay a stale
   // copy of the previous render at the same URL. A query-string version
@@ -438,9 +469,12 @@ export async function renderDraft(input: RenderInput): Promise<RenderResult> {
   const publicVideoUrl = videoHostedHttps
     ? appendCacheBuster(videoBlob!.url, renderStamp)
     : `/renders/${draftId}/video.mp4?v=${renderStamp}`;
-  const versionedVoiceoverUrl = publicVoiceoverUrl
-    ? appendCacheBuster(publicVoiceoverUrl, renderStamp)
-    : null;
+  // Don't persist a URL we just deleted — it would 404. The voiceover is
+  // an internal render input, not a published artifact.
+  const versionedVoiceoverUrl =
+    publicVoiceoverUrl && !voiceoverReclaimed
+      ? appendCacheBuster(publicVoiceoverUrl, renderStamp)
+      : null;
 
   return {
     videoPath,

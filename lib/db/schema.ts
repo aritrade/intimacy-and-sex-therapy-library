@@ -608,6 +608,15 @@ export const contentDrafts = pgTable("content_drafts", {
    * archived rows by default.
    */
   archivedAt: timestamp("archived_at", { withTimezone: true }),
+  /**
+   * Consecutive render-failure count, used by the render-due cron to back off
+   * a draft whose render keeps failing (e.g. the Blob store is full/suspended)
+   * onto an exponential retry schedule instead of hammering it every hour.
+   * Reset to 0 on a successful render or a script rewrite.
+   */
+  renderAttempts: integer("render_attempts").notNull().default(0),
+  /** Timestamp of the most recent render attempt (success or failure). */
+  lastRenderAttemptAt: timestamp("last_render_attempt_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 

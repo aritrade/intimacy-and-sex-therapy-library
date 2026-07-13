@@ -42,6 +42,38 @@ import type { RenderInput } from "../lib/social/render";
 const BATCH_LIMIT = Number(process.env.RENDER_DUE_BATCH ?? "5");
 const KNOWN_STYLES = ["typography", "stock", "photo", "avatar", "long_form_essay"] as const;
 
+// Exponential backoff for repeatedly-failing renders. A draft whose render
+// keeps failing (e.g. the Vercel Blob store is full/suspended) used to be
+// retried EVERY hour, re-pulling its voiceover/portrait assets out of Blob
+// 24x/day and draining the free-tier data-transfer quota. Instead we wait
+// BASE * 2^(attempts-1) hours between attempts, capped at MAX. The schedule is
+// time-based (never a permanent cap) so once the underlying issue is fixed the
+// draft heals itself on the next eligible cron with no manual intervention.
+const BACKOFF_BASE_HOURS = Number(process.env.RENDER_BACKOFF_BASE_HOURS ?? "2");
+const BACKOFF_MAX_HOURS = Number(process.env.RENDER_BACKOFF_MAX_HOURS ?? "24");
+// How many candidates to pull before backoff-filtering down to BATCH_LIMIT.
+// Generous so a few backed-off drafts can't starve fresh ones out of the run.
+const CANDIDATE_LIMIT = Math.max(BATCH_LIMIT * 10, 50);
+
+/** Milliseconds to wait after `attempts` consecutive failures before retrying. */
+function backoffMs(attempts: number): number {
+  if (attempts <= 0) return 0;
+  const hours = Math.min(
+    BACKOFF_BASE_HOURS * 2 ** (attempts - 1),
+    BACKOFF_MAX_HOURS,
+  );
+  return hours * 3600_000;
+}
+
+/** A draft is eligible if it has never been attempted or its backoff has elapsed. */
+function isRenderEligible(
+  row: { renderAttempts: number; lastRenderAttemptAt: Date | null },
+  now: number,
+): boolean {
+  if (!row.lastRenderAttemptAt || row.renderAttempts <= 0) return true;
+  return now - row.lastRenderAttemptAt.getTime() >= backoffMs(row.renderAttempts);
+}
+
 /**
  * Every non-terminal status that can legitimately be missing a video and
  * therefore needs a (re-)render. This is deliberately broader than the
@@ -94,8 +126,13 @@ async function main() {
     drafts = row;
     console.log(`[render-due] mode=single draftId=${explicitId} status=${drafts[0].status}`);
   } else {
-    drafts = await db
-      .select({ id: contentDrafts.id, status: contentDrafts.status })
+    const candidates = await db
+      .select({
+        id: contentDrafts.id,
+        status: contentDrafts.status,
+        renderAttempts: contentDrafts.renderAttempts,
+        lastRenderAttemptAt: contentDrafts.lastRenderAttemptAt,
+      })
       .from(contentDrafts)
       .where(
         and(
@@ -104,8 +141,18 @@ async function main() {
         ),
       )
       .orderBy(desc(contentDrafts.createdAt))
-      .limit(BATCH_LIMIT);
-    console.log(`[render-due] mode=batch found=${drafts.length} (limit=${BATCH_LIMIT})`);
+      .limit(CANDIDATE_LIMIT);
+
+    const now = Date.now();
+    const eligible = candidates.filter((c) => isRenderEligible(c, now));
+    const backedOff = candidates.length - eligible.length;
+    drafts = eligible
+      .slice(0, BATCH_LIMIT)
+      .map((c) => ({ id: c.id, status: c.status }));
+    console.log(
+      `[render-due] mode=batch candidates=${candidates.length} eligible=${eligible.length} ` +
+        `backed_off=${backedOff} selected=${drafts.length} (limit=${BATCH_LIMIT})`,
+    );
   }
 
   if (drafts.length === 0) {

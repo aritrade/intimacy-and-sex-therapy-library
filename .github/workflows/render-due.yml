@@ -70,6 +70,16 @@ jobs:
       - name: Install npm deps
         run: npm ci --no-audit --no-fund
 
+      - name: Apply DB migrations
+        # Idempotent (all migrations are IF NOT EXISTS / OR REPLACE). Ensures
+        # schema columns the renderer relies on — e.g. content_drafts
+        # .render_attempts for the backoff scan — exist on the runner's view
+        # of the DB before scripts/render-due.ts queries them, even if a
+        # deploy-time migrate hasn't run yet.
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: npm run db:migrate
+
       - name: Cache Remotion bundle output
         uses: actions/cache@v4
         with:
@@ -84,6 +94,14 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           BLOB_READ_WRITE_TOKEN: ${{ secrets.BLOB_READ_WRITE_TOKEN }}
+          # S3-compatible store (Cloudflare R2 etc.) — takes precedence over
+          # Vercel Blob when set. See lib/social/blob-host.ts.
+          S3_ENDPOINT: ${{ secrets.S3_ENDPOINT }}
+          S3_BUCKET: ${{ secrets.S3_BUCKET }}
+          S3_ACCESS_KEY_ID: ${{ secrets.S3_ACCESS_KEY_ID }}
+          S3_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_ACCESS_KEY }}
+          S3_PUBLIC_BASE_URL: ${{ secrets.S3_PUBLIC_BASE_URL }}
+          S3_REGION: ${{ secrets.S3_REGION }}
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
           PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}

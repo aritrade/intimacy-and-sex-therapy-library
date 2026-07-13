@@ -38,7 +38,7 @@
  *      ?v=<timestamp> cache-buster to the URL it returns so the admin
  *      preview never serves stale bytes. Re-renders are safe.
  */
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { contentDrafts } from "@/lib/db/schema";
 import { renderDraft, type RenderInput, type RenderResult } from "@/lib/social/render";
@@ -97,6 +97,24 @@ export async function renderDraftAndPersist(
       style: opts?.style,
     });
   } catch (e) {
+    // Record the failed attempt so the render-due cron can back off (see
+    // scripts/render-due.ts). Best-effort: never let the bookkeeping update
+    // mask the original render error. We leave status + video_url untouched
+    // so the draft stays eligible for a (backed-off) retry.
+    try {
+      await db
+        .update(contentDrafts)
+        .set({
+          renderAttempts: sql`${contentDrafts.renderAttempts} + 1`,
+          lastRenderAttemptAt: new Date(),
+        })
+        .where(eq(contentDrafts.id, draft.id));
+    } catch (bookkeepErr) {
+      console.warn(
+        "[render-and-persist] failed to record render attempt:",
+        (bookkeepErr as Error).message,
+      );
+    }
     throw new RenderPersistError("render_failed", String((e as Error).message));
   }
 
@@ -109,6 +127,9 @@ export async function renderDraftAndPersist(
       voiceoverUrl: result.publicVoiceoverUrl,
       captionsSrt: result.captionsSrt,
       status: nextStatus,
+      // Successful render clears the backoff so future re-renders start fresh.
+      renderAttempts: 0,
+      lastRenderAttemptAt: new Date(),
     })
     .where(eq(contentDrafts.id, draft.id));
 

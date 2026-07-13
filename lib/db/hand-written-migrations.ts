@@ -22,4 +22,5 @@ export const HAND_WRITTEN_MIGRATIONS: ReadonlyArray<readonly [label: string, fil
   ["page_views table", "0009_page_views.sql"],
   ["help search cache + flags", "0010_help_search.sql"],
   ["widen assessment_results.severity", "0011_assessment_severity_widen.sql"],
+  ["content_drafts render-attempt accounting", "0012_render_attempts.sql"],
 ] as const;

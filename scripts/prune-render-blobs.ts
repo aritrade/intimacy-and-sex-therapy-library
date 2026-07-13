@@ -16,6 +16,7 @@
  */
 import "dotenv/config";
 import { pruneRenderBlobs } from "../lib/social/blob-prune";
+import { isBlobConfigured } from "../lib/social/blob-host";
 
 const MB = (bytes: number) => (bytes / 1048576).toFixed(1);
 
@@ -24,8 +25,10 @@ async function main() {
     console.error("[prune-blobs] DATABASE_URL is not set — refusing to run.");
     process.exit(2);
   }
-  if (!process.env.BLOB_READ_WRITE_TOKEN) {
-    console.error("[prune-blobs] BLOB_READ_WRITE_TOKEN is not set — nothing to prune.");
+  if (!isBlobConfigured()) {
+    console.error(
+      "[prune-blobs] no storage backend configured (set S3_* or BLOB_READ_WRITE_TOKEN) — nothing to prune.",
+    );
     process.exit(2);
   }
 
