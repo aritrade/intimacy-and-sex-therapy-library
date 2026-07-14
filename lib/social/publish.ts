@@ -81,6 +81,35 @@ export function autoPublishPlatforms(): Platform[] {
   return ["youtube"];
 }
 
+/**
+ * True when a publish failure is transient and worth retrying rather than
+ * terminal. The publish-due cron reruns hourly, so anything here means "leave
+ * the draft schedulable and try again" (chiefly YouTube's per-day upload quota,
+ * which resets at midnight Pacific — critical now that the rollout runs at the
+ * ~6-uploads/day API ceiling). Matches on both the structured `reason` and the
+ * raw upstream `detail` (YouTube returns quota/rate reasons inside the JSON).
+ */
+export function isRetryablePublishFailure(f: {
+  reason: string;
+  detail?: string;
+}): boolean {
+  const hay = `${f.reason} ${f.detail ?? ""}`.toLowerCase();
+  return (
+    hay.includes("quotaexceeded") ||
+    hay.includes("uploadlimitexceeded") ||
+    hay.includes("ratelimitexceeded") ||
+    hay.includes("userratelimitexceeded") ||
+    hay.includes("backenderror") ||
+    hay.includes("timeout") ||
+    hay.includes("econnreset") ||
+    hay.includes("etimedout") ||
+    hay.includes("503") ||
+    hay.includes("502") ||
+    hay.includes("500") ||
+    f.reason === "fetch_failed"
+  );
+}
+
 export type PublishInput = {
   draftId: string;
   platforms: Platform[];
@@ -268,7 +297,16 @@ export async function publishDraft(input: PublishInput): Promise<PublishResult> 
     !!platformPostIds.youtube ||
     !!platformPostIds.facebook;
   const anySuccess = primarySuccess || Object.keys(platformPostIds).length > 0;
-  const nextStatus = anySuccess ? "posted" : "failed";
+  // A run that posted nothing because of a TRANSIENT problem (YouTube daily
+  // quota, rate limit, a 5xx, a blob fetch blip) must NOT burn the draft to
+  // "failed" — that drops it from the rollout forever. Leave it at its current
+  // status (editor_reviewed) so the hourly publish-due cron retries it once the
+  // quota window resets. Only a genuinely terminal failure marks it "failed".
+  const retryableOnly =
+    !anySuccess &&
+    failures.length > 0 &&
+    failures.every(isRetryablePublishFailure);
+  const nextStatus = anySuccess ? "posted" : retryableOnly ? draft.status : "failed";
   const nextPostedAt =
     anySuccess && !draft.postedAt ? new Date() : (draft.postedAt ?? null);
 

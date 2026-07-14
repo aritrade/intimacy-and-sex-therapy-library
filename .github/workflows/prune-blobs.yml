@@ -17,8 +17,10 @@
 #   In-flight drafts (script_draft / clinician_reviewed / rendered /
 #   editor_reviewed / scheduled) are always kept.
 #
-# Schedule offset: daily at 03:43 UTC (away from render-due :23, publish-due
-# :07, and the daily-generate window).
+# Schedule: hourly at :50 UTC (after publish-due :07 and render-due :23), so a
+# video posted this hour frees its blob before the next render run needs the
+# space. The store is a hard 1 GB and the pipeline stages ~6 videos/day; hourly
+# pruning is what keeps render→publish→prune rolling without the store filling.
 #
 # Required GH Actions secrets:
 #   - DATABASE_URL            (Neon postgres URL)
@@ -28,7 +30,7 @@ name: prune-blobs
 
 on:
   schedule:
-    - cron: "43 3 * * *"
+    - cron: "50 * * * *"
   workflow_dispatch:
     inputs:
       dry_run:
@@ -73,7 +75,12 @@ jobs:
           S3_PUBLIC_BASE_URL: ${{ secrets.S3_PUBLIC_BASE_URL }}
           S3_REGION: ${{ secrets.S3_REGION }}
           DRY_RUN: ${{ inputs.dry_run == true && '1' || '' }}
-          PRUNE_GRACE_HOURS: ${{ inputs.grace_hours }}
+          # YouTube-only rollout: once a Short is uploaded the blob is redundant
+          # (YouTube hosts its own copy and there's no second platform to
+          # partial-retry), so a short 2h grace is enough. Manual runs can still
+          # override. Keeping this low is what frees space fast enough to render
+          # the next batch.
+          PRUNE_GRACE_HOURS: ${{ inputs.grace_hours || '2' }}
         run: npx tsx scripts/prune-render-blobs.ts
 
       - name: Summary
