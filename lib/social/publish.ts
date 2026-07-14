@@ -35,6 +35,7 @@ import {
   isTwitterConfigured,
 } from "@/lib/social/publishers/twitter";
 import { BRAND_COPY } from "@/lib/brand/tokens";
+import { verifyPostedAndReclaim } from "./post-verify";
 import type { ProgressEvent } from "./publish-progress";
 
 export type PublishResult = {
@@ -318,6 +319,31 @@ export async function publishDraft(input: PublishInput): Promise<PublishResult> 
       postedAt: nextPostedAt,
     })
     .where(eq(contentDrafts.id, input.draftId));
+
+  // Rule: as soon as a draft is posted, confirm it's actually live on the
+  // platform and immediately reclaim its render blobs — freeing the 1GB store
+  // for the next batch instead of waiting for the hourly prune. Best-effort and
+  // verification-gated: if the post can't be confirmed we keep the blob (the
+  // prune is the backstop) so we never delete the only copy of a failed upload.
+  if (nextStatus === "posted") {
+    try {
+      const vr = await verifyPostedAndReclaim(input.draftId, platformPostIds);
+      if (vr.verified) {
+        console.log(
+          `[publish] ${input.draftId} verified live; reclaimed ${vr.reclaimed.deleted} blob(s), ` +
+            `${(vr.reclaimed.bytes / 1048576).toFixed(1)} MB freed`,
+        );
+      } else {
+        console.warn(
+          `[publish] ${input.draftId} post NOT verified (${vr.checks
+            .map((c) => `${c.platform}:${c.detail ?? c.ok}`)
+            .join(", ")}); keeping blob for the prune backstop`,
+        );
+      }
+    } catch (e) {
+      console.warn("[publish] verify-and-reclaim failed (non-fatal):", (e as Error).message);
+    }
+  }
 
   // Success of THIS call is what the API contract reports. If this
   // run attempted IG-only and IG failed, we report ok=false even

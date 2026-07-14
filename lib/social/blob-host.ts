@@ -319,7 +319,10 @@ export type StoredBlob = {
  * when no backend is configured — the caller (a maintenance job, never a
  * user request) is expected to require it.
  */
-export async function listRenderArtifacts(token?: string): Promise<StoredBlob[]> {
+export async function listRenderArtifacts(
+  token?: string,
+  prefix = "renders/",
+): Promise<StoredBlob[]> {
   const cfg = s3Config();
   if (cfg) {
     const client = await getS3Client(cfg);
@@ -330,7 +333,7 @@ export async function listRenderArtifacts(token?: string): Promise<StoredBlob[]>
       const page = await client.send(
         new ListObjectsV2Command({
           Bucket: cfg.bucket,
-          Prefix: "renders/",
+          Prefix: prefix,
           ContinuationToken: continuationToken,
           MaxKeys: 1000,
         }),
@@ -357,7 +360,7 @@ export async function listRenderArtifacts(token?: string): Promise<StoredBlob[]>
   const out: StoredBlob[] = [];
   let cursor: string | undefined;
   do {
-    const page = await list({ prefix: "renders/", cursor, limit: 1000, token: tok });
+    const page = await list({ prefix, cursor, limit: 1000, token: tok });
     for (const b of page.blobs) {
       out.push({
         url: b.url,
@@ -417,6 +420,27 @@ export async function deleteBlobs(urls: string[], token?: string): Promise<numbe
     }
   }
   return deleted;
+}
+
+/**
+ * Immediately reclaim ALL render artifacts for a single draft (the whole
+ * `renders/<draftId>/` folder). Called the instant a post is confirmed live on
+ * its platform, so the 1GB store frees up for the next render without waiting
+ * for the hourly prune. Best-effort: never throws, returns what it freed.
+ */
+export async function reclaimDraftRenderBlobs(
+  draftId: string,
+): Promise<{ deleted: number; bytes: number }> {
+  try {
+    const blobs = await listRenderArtifacts(undefined, `renders/${draftId}/`);
+    if (blobs.length === 0) return { deleted: 0, bytes: 0 };
+    const bytes = blobs.reduce((acc, b) => acc + b.size, 0);
+    const deleted = await deleteBlobs(blobs.map((b) => b.url));
+    return { deleted, bytes };
+  } catch (e) {
+    console.warn("[blob-host] reclaimDraftRenderBlobs failed:", (e as Error).message);
+    return { deleted: 0, bytes: 0 };
+  }
 }
 
 function mimeFor(filename: string): string {
