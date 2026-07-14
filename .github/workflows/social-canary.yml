@@ -1,0 +1,56 @@
+# On-demand social-credentials pre-flight.
+#
+# Pings the Vercel `/api/cron/social-canary` endpoint, which inspects the LIVE
+# publisher credentials (Meta Graph token + IG/FB nodes, YouTube refresh token)
+# and reports whether tonight's publish-due run will actually succeed on each
+# platform. Posts nothing. Run it from the Actions tab before relying on the
+# automated rollout.
+#
+# Required secrets (already used by publish-due):
+#   - VERCEL_DEPLOY_URL
+#   - CRON_SECRET
+
+name: social-canary
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  canary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Curl /api/cron/social-canary
+        env:
+          DEPLOY_URL: ${{ secrets.VERCEL_DEPLOY_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$DEPLOY_URL" ] || [ -z "$CRON_SECRET" ]; then
+            echo "::error ::Missing secrets VERCEL_DEPLOY_URL or CRON_SECRET"
+            exit 1
+          fi
+
+          response=$(curl -sS -w "\n%{http_code}" \
+            -X POST "$DEPLOY_URL/api/cron/social-canary" \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            -H "Content-Type: application/json" \
+            -d '{}')
+          body=$(echo "$response" | head -n -1)
+          http=$(echo "$response" | tail -n 1)
+
+          echo "HTTP $http"
+          echo "$body" | jq . 2>/dev/null || echo "$body"
+
+          # Surface an overall pass/fail for the run status.
+          ok=$(echo "$body" | jq -r '.ok' 2>/dev/null || echo "unknown")
+          echo "overall ok: $ok"
+          if [ "$http" -ne 200 ]; then
+            echo "::error ::social-canary endpoint returned $http"
+            exit 1
+          fi
+          if [ "$ok" != "true" ]; then
+            echo "::warning ::One or more social platforms are NOT publish-ready — see report above."
+          fi
