@@ -27,9 +27,10 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const HOUR_MS = 60 * 60 * 1000;
 
 /**
- * Peak IST hours we post at, default 7/8/9 PM. Override with a comma-separated
- * `PUBLISH_SLOTS_IST` env (e.g. "19,20,21"). Invalid entries are ignored; an
- * empty/invalid override falls back to the default so scheduling never breaks.
+ * IST hours we post at — 6/day: an afternoon spread plus the 7–9 PM India
+ * evening peak. Override with a comma-separated `PUBLISH_SLOTS_IST` env
+ * (e.g. "19,20,21" for 3/day). Invalid entries are ignored; an empty/invalid
+ * override falls back to the default so scheduling never breaks.
  */
 export function dailySlotHoursIst(): number[] {
   const raw = process.env.PUBLISH_SLOTS_IST;
@@ -40,7 +41,7 @@ export function dailySlotHoursIst(): number[] {
       .filter((n) => Number.isInteger(n) && n >= 0 && n <= 23);
     if (parsed.length > 0) return [...new Set(parsed)].sort((a, b) => a - b);
   }
-  return [19, 20, 21];
+  return [11, 14, 17, 19, 20, 21];
 }
 
 /** How many posts/day the throttle allows (one per configured slot). */
