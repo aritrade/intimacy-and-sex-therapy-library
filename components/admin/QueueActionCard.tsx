@@ -68,7 +68,9 @@ export function QueueActionCard({ lane, draft }: { lane: string; draft: Draft })
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            platforms: ["instagram", "youtube", "facebook"],
+            // YouTube-only rollout while the Meta app/dev account is unavailable.
+            // Re-add "instagram"/"facebook" here once Meta access is restored.
+            platforms: ["youtube"],
             iAmTheReviewerAndIWantToPublish: true,
           }),
         });

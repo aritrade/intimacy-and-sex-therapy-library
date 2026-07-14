@@ -73,7 +73,12 @@ export function autoPublishPlatforms(): Platform[] {
       .filter((s): s is Platform => (allowed as string[]).includes(s));
     if (parsed.length > 0) return [...new Set(parsed)];
   }
-  return ["instagram", "youtube", "facebook"];
+  // YouTube-only rollout: the Meta developer account is banned and the
+  // IG/FB app was deleted, so those publishers can't authenticate. Default
+  // to YouTube alone to avoid firing doomed Graph API calls every run. When
+  // Meta access is restored, re-enable without a deploy by setting
+  // AUTO_PUBLISH_PLATFORMS=instagram,youtube,facebook in the Vercel env.
+  return ["youtube"];
 }
 
 export type PublishInput = {
