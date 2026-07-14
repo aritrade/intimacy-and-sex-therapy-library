@@ -1,0 +1,27 @@
+# One-off blob storage audit (workflow_dispatch only).
+# Lists every blob by top-level prefix + size, to find what's consuming the
+# 1GB Hobby quota beyond the renders/ folder the prune scans. Read-only.
+name: blob-audit
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - name: Install npm deps
+        run: npm ci --no-audit --no-fund
+      - name: Audit
+        env:
+          BLOB_READ_WRITE_TOKEN: ${{ secrets.BLOB_READ_WRITE_TOKEN }}
+        run: npx tsx scripts/blob-audit.ts
