@@ -74,6 +74,7 @@ async function handle(req: Request): Promise<NextResponse> {
       ok: boolean;
       platforms: string[];
       failureCount: number;
+      failures?: Array<{ platform: string; reason: string; detail?: string }>;
     }>,
   };
 
@@ -92,6 +93,7 @@ async function handle(req: Request): Promise<NextResponse> {
       ok: r.ok,
       platforms: Object.keys(r.platformPostIds),
       failureCount: r.failures.length,
+      failures: r.failures.length > 0 ? r.failures : undefined,
     });
   }
 
